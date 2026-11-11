@@ -4,7 +4,7 @@ All notable changes to SyncForge are recorded here.
 
 ## [Unreleased]
 
-### Phase 2 - Backend foundation, authentication and organizations (in progress)
+### Phase 2 - Backend foundation, authentication and organizations (complete)
 
 #### Added
 - Docker Compose service for PostgreSQL 16 with health check and persistent volume.
@@ -31,6 +31,10 @@ All notable changes to SyncForge are recorded here.
 - Shared pagination schema (`items`, `total`, `limit`, `offset`).
 - 56 new tests (111 total), including a two-session concurrency test.
 - ADR-0005: organization-level data isolation.
+
+#### Verified
+- Clean clone from GitHub following the README: migrations applied from an empty
+  database, no model/migration drift, 111 tests passing.
 
 ### Phase 1 - Development environment and repository setup
 - Initialized Git repository on `main` with project folder structure.
