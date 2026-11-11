@@ -2,6 +2,13 @@
 which Alembic uses to compare models against the database."""
 
 from app.models.base import Base
+from app.models.connector import (
+    Connector,
+    ConnectorCredential,
+    ConnectorStatus,
+    ExternalAccount,
+    ExternalAccountStatus,
+)
 from app.models.employee import Department, Employee, EmploymentStatus
 from app.models.organization import Organization, OrganizationMembership, OrganizationRole
 from app.models.revoked_token import RevokedToken
@@ -9,9 +16,14 @@ from app.models.user import User
 
 __all__ = [
     "Base",
+    "Connector",
+    "ConnectorCredential",
+    "ConnectorStatus",
     "Department",
     "Employee",
     "EmploymentStatus",
+    "ExternalAccount",
+    "ExternalAccountStatus",
     "Organization",
     "OrganizationMembership",
     "OrganizationRole",

@@ -74,6 +74,13 @@ class UnprocessableError(AppError):
     code = "unprocessable"
 
 
+class BadGatewayError(AppError):
+    """An external application (connector) failed; `details` holds the normalized error."""
+
+    status_code = 502
+    code = "connector_error"
+
+
 class ServiceUnavailableError(AppError):
     status_code = 503
     code = "service_unavailable"

@@ -8,7 +8,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Self
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
@@ -48,6 +48,28 @@ class Settings(BaseSettings):
     jwt_audience: str = "syncforge-api"
     access_token_expire_minutes: int = Field(default=30, ge=1, le=24 * 60)
 
+    # ---- Connectors (external applications) -------------------------------------
+    # Fernet key(s) that encrypt connector credentials at rest. Comma-separated to
+    # rotate keys: the first key encrypts, every key can decrypt.
+    connector_encryption_key: SecretStr | None = None
+    # Hosts that connectors may call. Guards against server-side request forgery
+    # (an admin pointing a connector at an internal service).
+    connector_allowed_hosts: list[str] = ["localhost", "127.0.0.1"]
+    connector_connect_timeout_seconds: float = Field(default=3.0, gt=0, le=60)
+    connector_read_timeout_seconds: float = Field(default=10.0, gt=0, le=120)
+    # Default endpoints: the local mock services in mock-services/.
+    slack_base_url: str = "http://localhost:9101"
+    google_workspace_base_url: str = "http://localhost:9102"
+    payroll_base_url: str = "http://localhost:9103"
+
+    @field_validator("connector_encryption_key", mode="before")
+    @classmethod
+    def _blank_key_means_unset(cls, value: object) -> object:
+        # `CONNECTOR_ENCRYPTION_KEY=` (as shipped in .env.example) means "not configured".
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     @model_validator(mode="after")
     def _reject_placeholder_secrets_in_production(self) -> Self:
         if self.app_env == "production":
@@ -55,6 +77,8 @@ class Settings(BaseSettings):
                 raise ValueError("JWT_SECRET_KEY must be changed from the placeholder value.")
             if self.postgres_password.get_secret_value() == "change-me-local-only":
                 raise ValueError("POSTGRES_PASSWORD must be changed from the placeholder value.")
+            if self.connector_encryption_key is None:
+                raise ValueError("CONNECTOR_ENCRYPTION_KEY is required in production.")
         return self
 
     @property

@@ -9,3 +9,5 @@ alembic==1.20.1
 psycopg[binary]==3.3.8
 pyjwt==2.15.1
 pwdlib[argon2]==0.3.1
+cryptography==50.0.2
+httpx2==2.16.0

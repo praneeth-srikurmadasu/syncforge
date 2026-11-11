@@ -15,6 +15,8 @@ os.environ["APP_ENV"] = "test"
 os.environ["POSTGRES_DB"] = os.environ.get("TEST_POSTGRES_DB", "syncforge_test")
 # A fixed, test-only signing key so tests never depend on the developer's .env.
 os.environ["JWT_SECRET_KEY"] = "test-only-jwt-secret-key-not-for-real-use-0123456789"
+# A fixed, test-only Fernet key for connector credentials (never used outside tests).
+os.environ["CONNECTOR_ENCRYPTION_KEY"] = "jMggHptyBaQ5IacHbiPFCkSOGvxRC6WCbUoOWRJK52U="
 
 from collections.abc import Iterator  # noqa: E402
 from pathlib import Path  # noqa: E402

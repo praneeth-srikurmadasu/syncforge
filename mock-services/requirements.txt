@@ -1,0 +1,4 @@
+# Mock external services (local development and tests only) - pinned.
+fastapi==0.162.4
+uvicorn[standard]==0.54.0
+python-multipart==0.0.33

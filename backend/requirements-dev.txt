@@ -1,5 +1,6 @@
 # Development and test dependencies.
 -r requirements.txt
+# The connector tests start the mock services in-process.
+-r ../mock-services/requirements.txt
 pytest==9.2.0
-httpx2==2.16.0
 ruff==0.17.4
