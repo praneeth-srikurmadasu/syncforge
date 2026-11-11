@@ -1,7 +1,7 @@
-# 15 — Security Design
+# 15 - Security Design
 
 > **Scope:** controls implemented as of Phase 2. The "Not yet implemented" table at the
-> end lists what later phases add — those items are not claimed as done.
+> end lists what later phases add - those items are not claimed as done.
 
 ## 1. Authentication flow
 
@@ -31,8 +31,8 @@ sequenceDiagram
 
 | Stage | Behaviour |
 |---|---|
-| Issue | HS256, signed with `JWT_SECRET_KEY` (≥ 32 chars). Lifetime `ACCESS_TOKEN_EXPIRE_MINUTES` (default 30). Each token gets a random `jti`. |
-| Use | Sent as `Authorization: Bearer`. On every protected request `get_auth_context` checks: present → signature → `exp` → `iss` = `syncforge` → `aud` = `syncforge-api` → `type` = `access` → required claims present → `jti` not revoked → user exists and `is_active`. |
+| Issue | HS256, signed with `JWT_SECRET_KEY` (>= 32 chars). Lifetime `ACCESS_TOKEN_EXPIRE_MINUTES` (default 30). Each token gets a random `jti`. |
+| Use | Sent as `Authorization: Bearer`. On every protected request `get_auth_context` checks: present -> signature -> `exp` -> `iss` = `syncforge` -> `aud` = `syncforge-api` -> `type` = `access` -> required claims present -> `jti` not revoked -> user exists and `is_active`. |
 | Revoke | `POST /auth/logout` stores the `jti` in `revoked_tokens`. Only that token is revoked. |
 | Expire | After `exp` the token is rejected with `token_expired`; its denylist row is no longer needed. |
 
@@ -46,7 +46,7 @@ end a session; the cost is one primary-key lookup per request.
 ## 3. Passwords
 
 - **Argon2id** via `pwdlib` (memory-hard; random salt per hash). Plain passwords are never stored.
-- Length 12–128. The upper bound limits CPU cost per hashing request.
+- Length 12-128. The upper bound limits CPU cost per hashing request.
 - Hashes with outdated parameters are transparently upgraded at next successful login.
 - Passwords are Pydantic `SecretStr`: they do not appear in reprs, logs, or validation errors.
 
@@ -81,13 +81,81 @@ end a session; the cost is one primary-key lookup per request.
   the `Authorization` header, not cookies.
 - TLS termination is a deployment concern (documented in the Phase 10 deployment guide).
 
-## 8. Not yet implemented
+## 8. Authorization model
+
+### Roles and permissions
+
+Endpoints check a **permission**, never a role name. The mapping lives in one place,
+`ROLE_PERMISSIONS` in `app/security/authorization.py`, and is covered by
+`test_role_permission_matrix`.
+
+| Permission | Viewer | Integration Manager | Organization Admin | Super Admin |
+|---|---|---|---|---|
+| `org:read` - view the organization | yes | yes | yes | yes |
+| `members:read` - list members | yes | yes | yes | yes |
+| `org:update` - rename the organization | no | no | yes | yes |
+| `members:manage` - add, re-role, remove members | no | no | yes | yes |
+
+Integration Managers currently have the same permissions as Viewers; connector and workflow
+permissions are added to their role when those features are built (Phases 4-5).
+
+**Super Admin** is a platform-wide flag (`users.is_superadmin`), not a membership role. It
+grants every permission in every organization. It cannot be obtained through the API; an
+operator with shell access creates one:
+
+```powershell
+python -m app.cli create-superadmin --email admin@example.com --name "Platform Admin"
+```
+
+The password is prompted for (never passed as an argument, so it stays out of shell history).
+Running it for an existing email promotes that user.
+
+### Organization isolation
+
+Every route under `/api/v1/organizations/{organization_id}` depends on
+`require_org_permission(permission)`, which calls `resolve_org_access`:
+
+```mermaid
+flowchart TD
+    start["Request for /organizations/{id}/..."] --> load["Load organization and caller's membership"]
+    load --> exists{"Organization exists?"}
+    exists -- no --> nf["404 organization_not_found"]
+    exists -- yes --> sa{"Caller is Super Admin?"}
+    sa -- yes --> ok["Allowed - all permissions"]
+    sa -- no --> member{"Member AND organization active?"}
+    member -- no --> nf
+    member -- yes --> perm{"Role has the permission?"}
+    perm -- no --> forbidden["403 insufficient_role"]
+    perm -- yes --> ok2["Allowed - endpoint receives OrgContext"]
+```
+
+- **404, not 403, for outsiders:** a non-member cannot tell whether an organization ID exists.
+- **403 for members** whose role lacks the permission; `details.required_permission` says which.
+- Listing (`GET /api/v1/organizations`) is filtered in SQL by the caller's memberships, so an
+  outsider's organizations never appear.
+- Endpoints receive the already-loaded organization via `OrgContext`, so later features
+  (employees, connectors) scope every query by that organization's ID.
+- Covered by `test_admin_of_one_org_cannot_touch_another` (six cross-organization requests,
+  all `404`, data unchanged) and `test_member_lost_access_after_removal`.
+
+See [ADR-0005](adr/0005-organization-level-data-isolation.md) for the design decision.
+
+### The "last Organization Admin" rule
+
+An organization must always keep at least one Organization Admin; demoting or removing the
+last one returns `409 last_admin`. Before the check, the service locks the organization's admin
+rows with `SELECT ... FOR UPDATE`. If two admins try to demote each other at the same moment,
+the second request waits for the first to commit, then re-counts and is refused.
+`tests/test_concurrency.py` proves this with two real database sessions; the test fails if the
+lock is removed.
+
+## 9. Not yet implemented
 
 | Control | Planned phase |
 |---|---|
-| Role-based authorization and organization isolation on endpoints | Phase 2, Part 4 |
 | Rate limiting on login/register | Phase 9 |
 | Request body size limits | Phase 9 |
 | Encrypted storage of connector credentials (OAuth secrets) | Phase 4 |
 | Scheduled cleanup of expired `revoked_tokens` rows | Phase 5 |
-| Audit log of security-relevant actions | Phase 7 |
+| Audit log of security-relevant actions (including Super Admin actions) | Phase 7 |
+| Invitations for people who are not registered yet | Future improvement |

@@ -6,7 +6,7 @@ SyncForge keeps employee data consistent across HR, Slack, Google Workspace and 
 turning workforce changes (hire, transfer, termination) into reliably processed, audited
 synchronization events.
 
-> **Status: Phase 2 of 10 in progress — backend foundation and authentication.**
+> **Status: Phase 2 of 10 in progress - backend foundation, authentication and organizations.**
 > See [`PROJECT_STATUS.md`](PROJECT_STATUS.md) for exactly what works today.
 
 ## What works today
@@ -14,18 +14,21 @@ synchronization events.
 - FastAPI backend with structured JSON logs, request IDs and one consistent error format
 - `/health` (liveness) and `/ready` (database readiness) probes
 - PostgreSQL 16 in Docker Compose, schema managed by Alembic migrations
-- Organizations, users and role-based memberships (data model)
 - Registration, login with JWT access tokens, `/me`, and logout that truly revokes the token
-- 55 automated tests against a real PostgreSQL database
+- Organizations API with four roles (Super Admin, Organization Admin, Integration Manager,
+  Viewer), permission checks, and strict organization isolation (outsiders get 404)
+- Member management with a concurrency-safe "at least one admin" rule
+- 111 automated tests against a real PostgreSQL database, including a two-session
+  concurrency test
 
 ## Tech stack
 
 | Layer | Technology | Status |
 |---|---|---|
-| Backend | Python 3.13, FastAPI, Pydantic v2, SQLAlchemy 2, Alembic | ✅ in use |
-| Database | PostgreSQL 16 (Docker) | ✅ in use |
-| Auth | Argon2id password hashing, JWT (PyJWT) | ✅ in use |
-| Testing | Pytest, Starlette TestClient | ✅ in use |
+| Backend | Python 3.13, FastAPI, Pydantic v2, SQLAlchemy 2, Alembic | in use |
+| Database | PostgreSQL 16 (Docker) | in use |
+| Auth | Argon2id password hashing, JWT (PyJWT) | in use |
+| Testing | Pytest, Starlette TestClient | in use |
 | Background jobs | Redis 7 + Celery | Phase 5 |
 | Frontend | Angular 22, TypeScript | Phase 8 |
 | CI | GitHub Actions | Phase 10 |
@@ -59,6 +62,12 @@ uvicorn app.main:app --reload
 
 Open **http://127.0.0.1:8000/docs** for the interactive API documentation.
 
+Optional - create a platform Super Admin (prompts for a password):
+
+```powershell
+python -m app.cli create-superadmin --email admin@example.com --name "Platform Admin"
+```
+
 On macOS/Linux use `cp .env.example .env`, `python3.13 -m venv .venv` and
 `source .venv/bin/activate`.
 
@@ -82,8 +91,9 @@ backend/
     models/         SQLAlchemy tables
     repositories/   database queries
     schemas/        request/response contracts
-    security/       password hashing, JWT
+    security/       password hashing, JWT, roles and permissions
     services/       business rules and transactions
+    cli.py          operator commands (create-superadmin)
   migrations/       Alembic migrations (0001, 0002, ...)
   tests/            pytest suite
 docs/               architecture, database, API, security, ADRs
@@ -100,6 +110,6 @@ docker-compose.yml  local PostgreSQL (more services added per phase)
 | [System architecture](docs/05-system-architecture.md) | Components, layers, request lifecycle, errors, logging |
 | [Database design](docs/07-database-design.md) | ER diagram, tables, constraints, migrations, transactions |
 | [API design](docs/08-api-design.md) | Conventions, error codes, endpoint reference |
-| [Security design](docs/15-security-design.md) | Auth flow, JWT lifecycle, passwords, secrets |
-| [Architecture decisions](docs/adr/) | ADR-0001 … ADR-0004 |
-| [Project plan](PROJECT_PLAN.md) · [Status](PROJECT_STATUS.md) · [Changelog](CHANGELOG.md) | Progress tracking |
+| [Security design](docs/15-security-design.md) | Auth flow, JWT lifecycle, passwords, secrets, roles, tenant isolation |
+| [Architecture decisions](docs/adr/) | ADR-0001 to ADR-0005 |
+| [Project plan](PROJECT_PLAN.md), [Status](PROJECT_STATUS.md), [Changelog](CHANGELOG.md) | Progress tracking |

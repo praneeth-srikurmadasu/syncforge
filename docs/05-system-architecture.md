@@ -1,4 +1,4 @@
-# 05 — System Architecture
+# 05 - System Architecture
 
 > **Scope:** describes what is implemented as of Phase 2. Sections are added as
 > later phases add components (workers, connectors, frontend). Nothing here is planned-only.
@@ -11,11 +11,11 @@ flowchart LR
     subgraph api["FastAPI application (backend/app)"]
         mw["RequestContextMiddleware<br/>request ID + timing log"]
         cors["CORSMiddleware"]
-        routes["Routers<br/>/health, /ready, /api/v1/auth"]
-        deps["Dependencies<br/>DB session, current user"]
-        svc["Services<br/>AuthService"]
-        repo["Repositories<br/>UserRepository, RevokedTokenRepository"]
-        sec["Security<br/>Argon2id, JWT"]
+        routes["Routers<br/>/health, /ready, /api/v1/auth,<br/>/api/v1/organizations"]
+        deps["Dependencies<br/>DB session, current user,<br/>require_org_permission"]
+        svc["Services<br/>AuthService, OrganizationService"]
+        repo["Repositories<br/>User, RevokedToken, Organization"]
+        sec["Security<br/>Argon2id, JWT, RBAC"]
     end
     db[("PostgreSQL 16<br/>Docker Compose")]
 
@@ -42,10 +42,10 @@ added in Phase 5 as separately scalable processes that share the same codebase.
 | Services | `app/services/` | Business rules and **transaction boundaries** (`commit` / `rollback`) | build HTTP responses |
 | Repositories | `app/repositories/` | All database queries | make business decisions |
 | Models | `app/models/` | SQLAlchemy table definitions and DB constraints | contain behaviour beyond the data |
-| Security | `app/security/` | Password hashing, JWT creation/validation | depend on HTTP |
+| Security | `app/security/` | Password hashing, JWT, role/permission checks and tenant isolation | depend on HTTP |
 | Core | `app/core/` | Settings, logging, middleware, errors, DB engine | depend on features |
 
-Dependencies point downwards only: routers → services → repositories → models.
+Dependencies point downwards only: routers -> services -> repositories -> models.
 
 ## 3. Request lifecycle
 
@@ -67,6 +67,11 @@ sequenceDiagram
         D->>D: verify JWT signature, exp, iss, aud, type
         D->>DB: is jti revoked? does user exist and is active?
     end
+    opt organization endpoint
+        R->>D: require_org_permission(permission)
+        D->>DB: load organization and caller's membership
+        D->>D: non-member -> 404, missing permission -> 403
+    end
     R->>S: call use case
     S->>DB: queries via repositories, then COMMIT
     S-->>R: result or AppError
@@ -86,9 +91,9 @@ All errors share one response shape:
 | Source | Status | `code` |
 |---|---|---|
 | `AppError` subclasses raised by services | 400/401/403/404/409/503 | specific, e.g. `email_taken`, `token_revoked` |
-| Request validation (Pydantic) | 422 | `validation_error` — `details` lists `field`, `message`, `type`; submitted values are **never echoed** |
+| Request validation (Pydantic) | 422 | `validation_error` - `details` lists `field`, `message`, `type`; submitted values are **never echoed** |
 | Unknown route / wrong method | 404 / 405 | `not_found` / `method_not_allowed` |
-| Any unexpected exception | 500 | `internal_error` — generic message; full traceback goes to logs only |
+| Any unexpected exception | 500 | `internal_error` - generic message; full traceback goes to logs only |
 
 Implementation: `app/core/errors.py`.
 
@@ -103,14 +108,14 @@ Implementation: `app/core/errors.py`.
 - Logs contain user IDs, never passwords, password hashes, tokens or emails.
 
 **Investigating a failed request:** take the `request_id` from the error response and
-search the logs for it — every line written while handling that request carries it.
+search the logs for it - every line written while handling that request carries it.
 
 ## 6. Health and readiness
 
 | Endpoint | Purpose | Touches dependencies? |
 |---|---|---|
-| `GET /health` | Liveness: is the process running? | No — a slow database must not cause restarts |
-| `GET /ready` | Readiness: can it serve traffic? | Yes — runs `SELECT 1`; returns `503 not_ready` if the DB is unreachable |
+| `GET /health` | Liveness: is the process running? | No - a slow database must not cause restarts |
+| `GET /ready` | Readiness: can it serve traffic? | Yes - runs `SELECT 1`; returns `503 not_ready` if the DB is unreachable |
 
 ## 7. Configuration
 

@@ -4,7 +4,7 @@ All notable changes to SyncForge are recorded here.
 
 ## [Unreleased]
 
-### Phase 2 - Backend foundation and authentication (in progress)
+### Phase 2 - Backend foundation, authentication and organizations (in progress)
 
 #### Added
 - Docker Compose service for PostgreSQL 16 with health check and persistent volume.
@@ -22,6 +22,15 @@ All notable changes to SyncForge are recorded here.
 - 55 automated tests (health, migrations, DB constraints, security, auth API).
 - Documentation: system architecture, database design, API design, security design,
   ADR-0001 to ADR-0004.
+- Organizations API: create, list (paginated), get, rename.
+- Membership API: list, add by email, change role, remove.
+- Role-based permissions (`org:read`, `org:update`, `members:read`, `members:manage`) and
+  organization isolation: non-members get 404, members without permission get 403.
+- "At least one Organization Admin" rule protected by `SELECT ... FOR UPDATE` row locks.
+- `python -m app.cli create-superadmin` operator command.
+- Shared pagination schema (`items`, `total`, `limit`, `offset`).
+- 56 new tests (111 total), including a two-session concurrency test.
+- ADR-0005: organization-level data isolation.
 
 ### Phase 1 - Development environment and repository setup
 - Initialized Git repository on `main` with project folder structure.
