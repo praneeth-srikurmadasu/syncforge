@@ -7,6 +7,10 @@ themselves platform-wide access). They are created by an operator with shell acc
 
 The password is prompted for (never passed on the command line, where it would end
 up in shell history). If the email already belongs to a user, that user is promoted.
+
+Local demo data (see app/seed.py):
+
+    python -m app.cli seed-demo --admin-email you@example.com
 """
 
 import argparse
@@ -20,6 +24,7 @@ from app.models import User
 from app.repositories.users import UserRepository
 from app.schemas.auth import PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH
 from app.security.passwords import hash_password
+from app.seed import SeedError, seed_demo
 
 
 def create_superadmin(
@@ -62,7 +67,12 @@ def main(argv: list[str] | None = None) -> int:
     create = commands.add_parser("create-superadmin", help="Create or promote a Super Admin")
     create.add_argument("--email", required=True)
     create.add_argument("--name", default="Platform Admin")
+    seed = commands.add_parser("seed-demo", help="Create the 'Acme Demo' organization")
+    seed.add_argument("--admin-email", required=True, help="An already registered user")
     args = parser.parse_args(argv)
+
+    if args.command == "seed-demo":
+        return _seed_demo(args.admin_email)
 
     with SessionLocal() as session:
         existing = UserRepository(session).get_by_email(args.email.strip().lower())
@@ -76,6 +86,21 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     action = "Promoted existing user" if existing else "Created"
     print(f"{action} Super Admin {user.email} (id {user.id})")
+    return 0
+
+
+def _seed_demo(admin_email: str) -> int:
+    with SessionLocal() as session:
+        try:
+            result = seed_demo(session, admin_email=admin_email)
+        except SeedError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+        print(
+            f"Created organization '{result.organization.name}' "
+            f"(id {result.organization.id}) with {result.departments} departments and "
+            f"{result.employees} employees. {admin_email} is its Organization Admin."
+        )
     return 0
 
 
