@@ -1,6 +1,6 @@
 # 08 - API Design
 
-> **Scope:** endpoints implemented as of Phase 2. Live, always-current reference:
+> **Scope:** endpoints implemented as of Phase 3. Live, always-current reference:
 > **http://127.0.0.1:8000/docs** (Swagger UI) and `/openapi.json`, generated from the code.
 
 ## 1. Conventions
@@ -15,7 +15,8 @@
 | Request tracing | Every response has `X-Request-ID`; send your own (`[A-Za-z0-9._-]{1,128}`) to correlate. |
 | Errors | Always `{"error": {"code", "message", "details", "request_id"}}`. Branch on `code`, not `message`. |
 | Validation | `422 validation_error`; `details` is a list of `{field, message, type}`. Input values are never echoed back. |
-| Pagination | List endpoints take `limit` (1-100, default 20) and `offset` (default 0) and return `{"items", "total", "limit", "offset"}`. Order is stable (name, then id). |
+| Pagination | List endpoints take `limit` (1-100) and `offset` (default 0) and return `{"items", "total", "limit", "offset"}`. Every sort ends with `id` as a tie-breaker, so pages never overlap or skip rows. |
+| Partial updates | `PATCH` changes only the fields present in the body. Sending `null` clears an optional field; unknown fields are rejected (`422`). |
 | Tenant isolation | Any resource under `/organizations/{organization_id}` returns **404** to non-members, and **403** to members whose role lacks the permission. |
 
 ### Error codes in use
@@ -37,7 +38,21 @@
 | 409 | `slug_taken` | Organization slug already in use |
 | 409 | `already_member` | User is already a member of the organization |
 | 409 | `last_admin` | Change would leave the organization with no Organization Admin |
-| 422 | `validation_error` | Request body failed validation |
+| 404 | `department_not_found` | Department does not exist in this organization (department endpoints) |
+| 404 | `employee_not_found` | Employee does not exist in this organization (also for another organization's employee ID) |
+| 409 | `department_name_taken` | Department name already used in this organization (case-insensitive) |
+| 409 | `department_in_use` | Department still has employees; `details.employee_count` |
+| 409 | `employee_number_taken` | Employee number already used in this organization |
+| 409 | `email_taken` | (employees) Email already used by another employee in this organization |
+| 409 | `employee_terminated` | Employee is terminated: cannot be modified or terminated again |
+| 409 | `employee_not_terminated` | Only terminated employees can be archived |
+| 422 | `validation_error` | Request body or query failed validation |
+| 422 | `department_not_found` | (employee body) `department_id` unknown in this organization |
+| 422 | `manager_not_found` | `manager_id` unknown in this organization |
+| 422 | `manager_terminated` | The chosen manager is terminated |
+| 422 | `manager_cycle` | The change would make someone their own (direct or indirect) manager |
+| 422 | `termination_before_joining` | Termination date earlier than joining date |
+| 422 | `invalid_date_range` | `joined_from` is after `joined_to` |
 | 500 | `internal_error` | Unexpected server error (details only in logs) |
 | 503 | `not_ready` | Readiness check failed (database unreachable) |
 
@@ -145,7 +160,133 @@ An explicitly requested slug that is taken returns `409 slug_taken`.
 Errors: `404 user_not_found`, `409 already_member` (add); `404 member_not_found`,
 `409 last_admin` (change role / remove).
 
-## 5. PowerShell examples
+## 5. Departments - `/api/v1/organizations/{organization_id}/departments`
+
+| Method and path | Permission | Notes |
+|---|---|---|
+| `GET .../departments?limit=50&offset=0` | `departments:read` | Sorted by name (case-insensitive); each item has `employee_count` |
+| `POST .../departments` | `departments:manage` | Body `{"name": "Engineering"}` (1-100 chars, trimmed). `201`. `409 department_name_taken` |
+| `PATCH .../departments/{department_id}` | `departments:manage` | Body `{"name": "..."}`. Changing only the letter case of its own name is allowed |
+| `DELETE .../departments/{department_id}` | `departments:manage` | `204`, or `409 department_in_use` while any employee (including archived) references it |
+
+Item: `{"id": "...", "name": "Engineering", "employee_count": 7, "created_at": "..."}`
+
+## 6. Employees - `/api/v1/organizations/{organization_id}/employees`
+
+| Method and path | Permission | Emits (lifecycle events) |
+|---|---|---|
+| `GET .../employees` | `employees:read` | - |
+| `GET .../employees/{employee_id}` | `employees:read` | - |
+| `POST .../employees` | `employees:write` | `employee.created` |
+| `PATCH .../employees/{employee_id}` | `employees:write` | `employee.department_changed`, `employee.manager_changed`, `employee.updated` (as applicable) |
+| `POST .../employees/{employee_id}/terminate` | `employees:write` | `employee.terminated`, plus `employee.manager_changed` per moved direct report |
+| `DELETE .../employees/{employee_id}` | `employees:write` | - (archive, see below) |
+
+Routes are nested under the organization (rather than the `/api/v1/employees` sketched in
+the original requirements) because a user can belong to several organizations: the path
+says which one, and the existing organization access check applies unchanged. An employee
+ID from another organization returns `404 employee_not_found`, exactly like a random ID.
+
+### Employee object
+
+```json
+{
+  "id": "41932c99-...", "organization_id": "30ce6c87-...",
+  "employee_number": "E-1001", "first_name": "Grace", "last_name": "Hopper",
+  "full_name": "Grace Hopper", "email": "grace.hopper@acme.example",
+  "department": {"id": "...", "name": "Engineering"},
+  "designation": "Staff Engineer",
+  "manager": {"id": "...", "employee_number": "E-1", "full_name": "Ada Lovelace"},
+  "location": "Bengaluru", "employment_status": "active",
+  "joining_date": "2024-01-15", "termination_date": null, "archived_at": null,
+  "created_at": "2026-11-11T14:09:36.03Z", "updated_at": "2026-11-11T14:09:36.03Z"
+}
+```
+
+### `POST .../employees`
+
+| Field | Required | Rules |
+|---|---|---|
+| employee_number | yes | 1-50 chars, starts with a letter or digit, then letters, digits, `.`, `_`, `-`; unique per organization |
+| first_name, last_name | yes | 1-100 chars after trimming |
+| email | yes | valid email, stored lowercase; unique per organization |
+| joining_date | yes | ISO date `YYYY-MM-DD` |
+| department_id | no | must be a department of this organization |
+| manager_id | no | must be a non-terminated employee of this organization |
+| designation, location | no | 1-150 chars after trimming |
+| employment_status | no | `active` (default) or `on_leave`. `terminated` is rejected - use `/terminate` |
+
+`201` with the employee object. Errors: `409 employee_number_taken | email_taken`,
+`422 validation_error | department_not_found | manager_not_found | manager_terminated`.
+
+### `PATCH .../employees/{employee_id}`
+
+Any subset of the create fields. Rules on top of the create rules:
+- `null` clears `department_id`, `manager_id`, `designation`, `location`; `null` for a
+  required field is `422`.
+- `employment_status` may move between `active` and `on_leave` only.
+- A terminated employee cannot be modified: `409 employee_terminated`.
+- A new manager must not report (directly or indirectly) to this employee: `422 manager_cycle`.
+- A body that changes nothing returns `200` and emits no event.
+
+### `POST .../employees/{employee_id}/terminate`
+
+Body optional: `{"termination_date": "2026-03-31"}`; defaults to today (UTC).
+Sets `employment_status = terminated` and `termination_date`. Direct reports are moved to
+the terminated employee's own manager (or to no manager if there is none), in the same
+transaction. Termination is final in this version (no rehire). Errors:
+`409 employee_terminated`, `422 termination_before_joining`.
+
+### `DELETE .../employees/{employee_id}` - archive
+
+Soft delete: sets `archived_at`. Allowed only for terminated employees
+(`409 employee_not_terminated` otherwise). Idempotent - archiving again returns `204` and
+changes nothing. Archived employees stay readable by ID and are hidden from the list unless
+`include_archived=true`. Nothing is physically deleted, so history remains intact.
+
+### `GET .../employees` - search, filters, sorting, pagination
+
+| Query parameter | Meaning |
+|---|---|
+| `search` | Case-insensitive substring match on full name, email or employee number. `%` and `_` are matched literally (escaped), not as wildcards. 1-100 chars |
+| `department_id`, `manager_id` | Exact match (`manager_id` lists direct reports) |
+| `employment_status` | `active`, `on_leave` or `terminated` |
+| `location` | Exact match, case-insensitive |
+| `joined_from`, `joined_to` | Inclusive joining-date range (`422 invalid_date_range` if reversed) |
+| `include_archived` | `false` by default |
+| `sort` | `last_name` (default), `-last_name`, `joining_date`, `-joining_date`, `employee_number`, `-created_at` |
+| `limit`, `offset` | Page size 1-100 (default 20), offset (default 0) |
+
+Filters combine with AND. Example:
+`GET .../employees?department_id=...&location=pune&sort=-joining_date&limit=10`
+
+**Pagination strategy:** offset pagination with a total count, chosen because the admin UI
+(Phase 8) needs page numbers and the data set per organization is modest. Sorting always
+appends `id`, so equal sort values (two people named "Shah") cannot make rows repeat or
+disappear between pages - covered by `test_pagination_is_stable_and_complete`. Keyset
+(cursor) pagination is the upgrade path for very large organizations.
+
+### Lifecycle events
+
+Each successful write is classified into events by comparing the employee's tracked fields
+before and after (`app/events/lifecycle.py`). One request can produce several events; each
+changed field appears in exactly one of them:
+
+| Change | Event |
+|---|---|
+| New employee | `employee.created` |
+| Status becomes `terminated` (with `termination_date`) | `employee.terminated` |
+| `department_id` changed | `employee.department_changed` |
+| `manager_id` changed | `employee.manager_changed` |
+| Any other tracked field | `employee.updated` |
+
+In Phase 3 events are written to the application log as
+`{"message": "employee lifecycle event", "event_type", "organization_id", "employee_id",
+"changed_fields"}` - IDs and field names only, never names or emails. In Phase 5 the same
+events are stored in the transactional outbox within the employee's database transaction
+and processed by workers.
+
+## 7. PowerShell examples
 
 ```powershell
 $base = "http://127.0.0.1:8000/api/v1/auth"
@@ -163,4 +304,18 @@ $org = Invoke-RestMethod -Method Post "$api/organizations" -Headers $h -ContentT
 Invoke-RestMethod -Method Post "$api/organizations/$($org.id)/members" -Headers $h `
   -ContentType "application/json" -Body '{"email":"bob@acme.example","role":"viewer"}'
 Invoke-RestMethod "$api/organizations/$($org.id)/members" -Headers $h
+```
+
+```powershell
+# Employees (after logging in as above and creating $org)
+$emp = "$api/organizations/$($org.id)/employees"
+$dept = Invoke-RestMethod -Method Post "$api/organizations/$($org.id)/departments" -Headers $h `
+  -ContentType "application/json" -Body '{"name":"Engineering"}'
+$body = @{ employee_number = "E-1001"; first_name = "Grace"; last_name = "Hopper";
+           email = "grace@acme.example"; department_id = $dept.id; joining_date = "2024-01-15" } |
+        ConvertTo-Json
+$grace = Invoke-RestMethod -Method Post $emp -Headers $h -ContentType "application/json" -Body $body
+Invoke-RestMethod "${emp}?search=hop&sort=-joining_date" -Headers $h
+Invoke-RestMethod -Method Post "$emp/$($grace.id)/terminate" -Headers $h `
+  -ContentType "application/json" -Body '{"termination_date":"2026-12-31"}'
 ```

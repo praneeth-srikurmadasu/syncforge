@@ -4,6 +4,28 @@ All notable changes to SyncForge are recorded here.
 
 ## [Unreleased]
 
+### Phase 3 - Employee management and workforce data model (complete)
+
+#### Added
+- Alembic migration `0003`: `departments` (case-insensitive unique names per organization)
+  and `employees` with composite foreign keys that keep department and manager in the same
+  organization, check constraints for lifecycle consistency, and organization-scoped indexes.
+- Departments API: list with employee counts, create, rename, delete (`409 department_in_use`).
+- Employees API: create, get, list with search / filters / sorting / stable pagination,
+  partial update, terminate (direct reports move up), archive (soft delete).
+- Business rules: same-organization references, no terminated managers, no reporting-line
+  cycles (recursive query), terminated employees are read-only.
+- Per-organization advisory lock serializing manager changes; two-session concurrency test.
+- Lifecycle event detection (`employee.created`, `.updated`, `.department_changed`,
+  `.manager_changed`, `.terminated`) as pure functions; events logged with IDs and field
+  names only.
+- Permissions `employees:read`, `employees:write`, `departments:read`, `departments:manage`.
+- `UnprocessableError` (422) for business-rule violations in well-formed input.
+- `python -m app.cli seed-demo` demo data command.
+- 97 new tests (208 total).
+- Documentation: component design (new), database design, API design, security design,
+  system architecture; ADR-0006 (composite foreign keys), ADR-0007 (advisory lock).
+
 ### Phase 2 - Backend foundation, authentication and organizations (complete)
 
 #### Added

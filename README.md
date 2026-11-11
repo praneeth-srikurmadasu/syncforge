@@ -6,7 +6,7 @@ SyncForge keeps employee data consistent across HR, Slack, Google Workspace and 
 turning workforce changes (hire, transfer, termination) into reliably processed, audited
 synchronization events.
 
-> **Status: Phase 2 of 10 in progress - backend foundation, authentication and organizations.**
+> **Status: Phase 3 of 10 complete - employee management. Next: Phase 4, connector framework.**
 > See [`PROJECT_STATUS.md`](PROJECT_STATUS.md) for exactly what works today.
 
 ## What works today
@@ -18,8 +18,14 @@ synchronization events.
 - Organizations API with four roles (Super Admin, Organization Admin, Integration Manager,
   Viewer), permission checks, and strict organization isolation (outsiders get 404)
 - Member management with a concurrency-safe "at least one admin" rule
-- 111 automated tests against a real PostgreSQL database, including a two-session
-  concurrency test
+- Departments and employees API: create, search, filter, sort, paginate, update, terminate
+  (direct reports move up) and archive, with tenant integrity enforced by the database
+- Employee lifecycle events (`employee.created`, `.updated`, `.department_changed`,
+  `.manager_changed`, `.terminated`) detected on every change and logged without personal data
+- Reporting-line cycle prevention that is safe under concurrent requests
+- `seed-demo` command that creates a realistic demo organization
+- 208 automated tests against a real PostgreSQL database, including two-session
+  concurrency tests
 
 ## Tech stack
 
@@ -62,6 +68,15 @@ uvicorn app.main:app --reload
 
 Open **http://127.0.0.1:8000/docs** for the interactive API documentation.
 
+Optional - load demo data. Register a user first (for example through `/docs`), then:
+
+```powershell
+python -m app.cli seed-demo --admin-email you@example.com
+```
+
+This creates the "Acme Demo" organization with 5 departments and 20 fictional employees, and
+makes you its Organization Admin.
+
 Optional - create a platform Super Admin (prompts for a password):
 
 ```powershell
@@ -93,8 +108,10 @@ backend/
     schemas/        request/response contracts
     security/       password hashing, JWT, roles and permissions
     services/       business rules and transactions
-    cli.py          operator commands (create-superadmin)
-  migrations/       Alembic migrations (0001, 0002, ...)
+    events/         lifecycle event detection (pure functions)
+    cli.py          operator commands (create-superadmin, seed-demo)
+    seed.py         demo data
+  migrations/       Alembic migrations (0001-0003)
   tests/            pytest suite
 docs/               architecture, database, API, security, ADRs
 frontend/           Angular app (Phase 8)
@@ -108,8 +125,9 @@ docker-compose.yml  local PostgreSQL (more services added per phase)
 | Document | Contents |
 |---|---|
 | [System architecture](docs/05-system-architecture.md) | Components, layers, request lifecycle, errors, logging |
+| [Component design](docs/06-component-design.md) | Employee domain model, lifecycle, validation layers, events, concurrency |
 | [Database design](docs/07-database-design.md) | ER diagram, tables, constraints, migrations, transactions |
 | [API design](docs/08-api-design.md) | Conventions, error codes, endpoint reference |
 | [Security design](docs/15-security-design.md) | Auth flow, JWT lifecycle, passwords, secrets, roles, tenant isolation |
-| [Architecture decisions](docs/adr/) | ADR-0001 to ADR-0005 |
+| [Architecture decisions](docs/adr/) | ADR-0001 to ADR-0007 |
 | [Project plan](PROJECT_PLAN.md), [Status](PROJECT_STATUS.md), [Changelog](CHANGELOG.md) | Progress tracking |

@@ -1,6 +1,6 @@
 # 05 - System Architecture
 
-> **Scope:** describes what is implemented as of Phase 2. Sections are added as
+> **Scope:** describes what is implemented as of Phase 3. Sections are added as
 > later phases add components (workers, connectors, frontend). Nothing here is planned-only.
 
 ## 1. Current components
@@ -11,10 +11,11 @@ flowchart LR
     subgraph api["FastAPI application (backend/app)"]
         mw["RequestContextMiddleware<br/>request ID + timing log"]
         cors["CORSMiddleware"]
-        routes["Routers<br/>/health, /ready, /api/v1/auth,<br/>/api/v1/organizations"]
+        routes["Routers<br/>/health, /ready, /api/v1/auth,<br/>/api/v1/organizations,<br/>.../departments, .../employees"]
         deps["Dependencies<br/>DB session, current user,<br/>require_org_permission"]
-        svc["Services<br/>AuthService, OrganizationService"]
-        repo["Repositories<br/>User, RevokedToken, Organization"]
+        svc["Services<br/>AuthService, OrganizationService,<br/>DepartmentService, EmployeeService"]
+        events["events.lifecycle<br/>pure event classification"]
+        repo["Repositories<br/>User, RevokedToken, Organization,<br/>Department, Employee"]
         sec["Security<br/>Argon2id, JWT, RBAC"]
     end
     db[("PostgreSQL 16<br/>Docker Compose")]
@@ -26,6 +27,7 @@ flowchart LR
     deps --> sec
     svc --> repo
     svc --> sec
+    svc --> events
     repo --> db
 ```
 
@@ -43,6 +45,7 @@ added in Phase 5 as separately scalable processes that share the same codebase.
 | Repositories | `app/repositories/` | All database queries | make business decisions |
 | Models | `app/models/` | SQLAlchemy table definitions and DB constraints | contain behaviour beyond the data |
 | Security | `app/security/` | Password hashing, JWT, role/permission checks and tenant isolation | depend on HTTP |
+| Events | `app/events/` | Pure functions that turn a before/after change into lifecycle events | touch the database or HTTP |
 | Core | `app/core/` | Settings, logging, middleware, errors, DB engine | depend on features |
 
 Dependencies point downwards only: routers -> services -> repositories -> models.
@@ -90,7 +93,7 @@ All errors share one response shape:
 
 | Source | Status | `code` |
 |---|---|---|
-| `AppError` subclasses raised by services | 400/401/403/404/409/503 | specific, e.g. `email_taken`, `token_revoked` |
+| `AppError` subclasses raised by services | 400/401/403/404/409/422/503 | specific, e.g. `email_taken`, `token_revoked` |
 | Request validation (Pydantic) | 422 | `validation_error` - `details` lists `field`, `message`, `type`; submitted values are **never echoed** |
 | Unknown route / wrong method | 404 / 405 | `not_found` / `method_not_allowed` |
 | Any unexpected exception | 500 | `internal_error` - generic message; full traceback goes to logs only |
@@ -105,7 +108,9 @@ Implementation: `app/core/errors.py`.
   `^[A-Za-z0-9._-]{1,128}$` (prevents log injection); otherwise a UUID is generated.
 - Each request produces one `request completed` line with `method`, `path`,
   `status_code` and `duration_ms`.
-- Logs contain user IDs, never passwords, password hashes, tokens or emails.
+- Logs contain user and employee IDs, never passwords, password hashes, tokens, names or
+  emails. Employee lifecycle events are logged as `employee lifecycle event` lines with
+  `event_type`, `employee_id` and `changed_fields` (see [component design](06-component-design.md)).
 
 **Investigating a failed request:** take the `request_id` from the error response and
 search the logs for it - every line written while handling that request carries it.

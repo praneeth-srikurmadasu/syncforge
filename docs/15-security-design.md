@@ -1,6 +1,6 @@
 # 15 - Security Design
 
-> **Scope:** controls implemented as of Phase 2. The "Not yet implemented" table at the
+> **Scope:** controls implemented as of Phase 3. The "Not yet implemented" table at the
 > end lists what later phases add - those items are not claimed as done.
 
 ## 1. Authentication flow
@@ -73,6 +73,11 @@ end a session; the cost is one primary-key lookup per request.
 - Unexpected errors return a generic `internal_error`; tracebacks go to logs only.
 - Logs record user IDs and token IDs (`jti`), never passwords, hashes, tokens or emails.
 - `User.__repr__` omits the email so PII does not leak into tracebacks.
+- Employee lifecycle events are logged with employee IDs and changed **field names** only,
+  never the values (names, emails). `test_create_employee` asserts that no captured log
+  record contains the employee's name; `Employee.__repr__` likewise shows only the ID.
+- The employee API exposes work-related fields only (no salary, personal address or
+  government IDs are stored in Phase 3).
 
 ## 7. Transport and browser access
 
@@ -95,6 +100,10 @@ Endpoints check a **permission**, never a role name. The mapping lives in one pl
 | `members:read` - list members | yes | yes | yes | yes |
 | `org:update` - rename the organization | no | no | yes | yes |
 | `members:manage` - add, re-role, remove members | no | no | yes | yes |
+| `employees:read` - list, search and view employees | yes | yes | yes | yes |
+| `departments:read` - list departments | yes | yes | yes | yes |
+| `employees:write` - create, update, terminate, archive employees | no | no | yes | yes |
+| `departments:manage` - create, rename, delete departments | no | no | yes | yes |
 
 Integration Managers currently have the same permissions as Viewers; connector and workflow
 permissions are added to their role when those features are built (Phases 4-5).
@@ -133,8 +142,15 @@ flowchart TD
 - **403 for members** whose role lacks the permission; `details.required_permission` says which.
 - Listing (`GET /api/v1/organizations`) is filtered in SQL by the caller's memberships, so an
   outsider's organizations never appear.
-- Endpoints receive the already-loaded organization via `OrgContext`, so later features
-  (employees, connectors) scope every query by that organization's ID.
+- Endpoints receive the already-loaded organization via `OrgContext`, and every repository
+  query filters by that organization's ID. The employee and department repositories have
+  no "get by ID" without an organization, so a foreign ID behaves like an unknown one
+  (`404 employee_not_found`) - covered by `test_cross_organization_access_is_404_everywhere`.
+- **Database backstop:** an employee's department and manager are referenced through
+  composite foreign keys that include `organization_id`, so PostgreSQL itself rejects a
+  cross-tenant reference ([ADR-0006](adr/0006-composite-foreign-keys-for-tenant-integrity.md)).
+- `PATCH` bodies cannot move an employee to another organization: unknown fields such as
+  `organization_id` are rejected with `422`.
 - Covered by `test_admin_of_one_org_cannot_touch_another` (six cross-organization requests,
   all `404`, data unchanged) and `test_member_lost_access_after_removal`.
 
@@ -158,4 +174,5 @@ lock is removed.
 | Encrypted storage of connector credentials (OAuth secrets) | Phase 4 |
 | Scheduled cleanup of expired `revoked_tokens` rows | Phase 5 |
 | Audit log of security-relevant actions (including Super Admin actions) | Phase 7 |
+| Field-level masking of employee personal data for low-privilege roles | Future improvement |
 | Invitations for people who are not registered yet | Future improvement |
