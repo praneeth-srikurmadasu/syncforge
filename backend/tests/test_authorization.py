@@ -28,6 +28,17 @@ ADMIN, MANAGER, VIEWER = (
         (ADMIN, Permission.MEMBERS_READ, True),
         (ADMIN, Permission.ORG_UPDATE, True),
         (ADMIN, Permission.MEMBERS_MANAGE, True),
+        # Phase 3: every member reads employees/departments; only admins change them.
+        (VIEWER, Permission.EMPLOYEES_READ, True),
+        (VIEWER, Permission.DEPARTMENTS_READ, True),
+        (VIEWER, Permission.EMPLOYEES_WRITE, False),
+        (VIEWER, Permission.DEPARTMENTS_MANAGE, False),
+        (MANAGER, Permission.EMPLOYEES_READ, True),
+        (MANAGER, Permission.DEPARTMENTS_READ, True),
+        (MANAGER, Permission.EMPLOYEES_WRITE, False),
+        (MANAGER, Permission.DEPARTMENTS_MANAGE, False),
+        (ADMIN, Permission.EMPLOYEES_WRITE, True),
+        (ADMIN, Permission.DEPARTMENTS_MANAGE, True),
     ],
 )
 def test_role_permission_matrix(

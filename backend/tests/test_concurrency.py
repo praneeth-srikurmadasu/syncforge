@@ -1,24 +1,30 @@
-"""Concurrency test: the "last Organization Admin" rule holds under simultaneous requests.
+"""Concurrency tests: business rules hold under simultaneous requests.
 
-Scenario: an organization has exactly two admins, A and B. A demotes B while, at the
-same moment, B demotes A. Without row locking both requests could see "two admins",
-both succeed, and the organization would be left with no admin at all.
+1. The "last Organization Admin" rule. An organization has exactly two admins, A and
+   B. A demotes B while, at the same moment, B demotes A. Without row locking both
+   requests could see "two admins", both succeed, and the organization would be left
+   with no admin at all.
 
-This test uses two real, separately committed database sessions (not the rolled-back
-test session), so it exercises PostgreSQL's actual SELECT ... FOR UPDATE locking.
+2. Reporting lines cannot form a cycle when two manager changes race.
+
+These tests use two real, separately committed database sessions (not the rolled-back
+test session), so they exercise PostgreSQL's actual locking.
 """
 
 import threading
 import uuid
 from collections.abc import Iterator
+from datetime import date
 
 import pytest
 from sqlalchemy import delete, func, select
 
 from app.core.database import SessionLocal
-from app.core.errors import ConflictError
-from app.models import Organization, OrganizationMembership, OrganizationRole, User
+from app.core.errors import ConflictError, UnprocessableError
+from app.models import Employee, Organization, OrganizationMembership, OrganizationRole, User
+from app.repositories.employees import EmployeeRepository
 from app.repositories.organizations import OrganizationRepository
+from app.services.employees import EmployeeService
 from app.services.organizations import OrganizationService
 
 
@@ -95,3 +101,78 @@ def test_simultaneous_demotions_cannot_remove_every_admin(
             )
         )
     assert admins == 1
+
+
+# ---- reporting lines -----------------------------------------------------------------
+
+
+@pytest.fixture
+def org_with_two_employees() -> Iterator[tuple[uuid.UUID, uuid.UUID, uuid.UUID]]:
+    suffix = uuid.uuid4().hex[:8]
+    with SessionLocal() as session:
+        org = Organization(name="Cycle Corp", slug=f"cycle-{suffix}")
+        session.add(org)
+        session.flush()
+        people = [
+            Employee(
+                organization_id=org.id,
+                employee_number=f"E-{name}",
+                first_name=name,
+                last_name="Race",
+                email=f"{name.lower()}-{suffix}@example.com",
+                joining_date=date(2024, 1, 1),
+            )
+            for name in ("Alice", "Bob")
+        ]
+        session.add_all(people)
+        session.commit()
+        ids = (org.id, people[0].id, people[1].id)
+    yield ids
+    with SessionLocal() as session:
+        session.execute(delete(Organization).where(Organization.id == ids[0]))
+        session.commit()
+
+
+def test_simultaneous_manager_changes_cannot_form_a_cycle(
+    org_with_two_employees: tuple[uuid.UUID, uuid.UUID, uuid.UUID],
+) -> None:
+    """Request 1 sets "Bob reports to Alice" while request 2 sets "Alice reports to Bob".
+
+    Each request locks a *different* employee row, so row locks alone would let both
+    succeed and create a cycle. The per-organization advisory lock serializes them.
+    """
+    org_id, alice, bob = org_with_two_employees
+    outcome: dict[str, object] = {}
+
+    first = SessionLocal()
+    EmployeeRepository(first).lock_hierarchy(org_id)
+
+    def alice_reports_to_bob() -> None:
+        with SessionLocal() as second:
+            organization = second.get(Organization, org_id)
+            try:
+                EmployeeService(second).update(organization, alice, {"manager_id": bob})
+                outcome["second"] = "succeeded"
+            except UnprocessableError as exc:
+                outcome["second"] = exc.code
+
+    worker = threading.Thread(target=alice_reports_to_bob)
+    worker.start()
+    worker.join(timeout=1.0)
+    assert worker.is_alive(), "second request should be waiting on the hierarchy lock"
+
+    organization = first.get(Organization, org_id)
+    EmployeeService(first).update(organization, bob, {"manager_id": alice})  # commits
+    first.close()
+
+    worker.join(timeout=10)
+    assert not worker.is_alive()
+    assert outcome["second"] == "manager_cycle"
+
+    with SessionLocal() as check:
+        managers = dict(
+            check.execute(
+                select(Employee.id, Employee.manager_id).where(Employee.organization_id == org_id)
+            ).all()
+        )
+    assert managers == {alice: None, bob: alice}

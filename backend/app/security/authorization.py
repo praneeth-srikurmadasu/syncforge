@@ -31,9 +31,20 @@ class Permission(enum.StrEnum):
     ORG_UPDATE = "org:update"
     MEMBERS_READ = "members:read"
     MEMBERS_MANAGE = "members:manage"
+    EMPLOYEES_READ = "employees:read"
+    EMPLOYEES_WRITE = "employees:write"
+    DEPARTMENTS_READ = "departments:read"
+    DEPARTMENTS_MANAGE = "departments:manage"
 
 
-_VIEWER = frozenset({Permission.ORG_READ, Permission.MEMBERS_READ})
+_VIEWER = frozenset(
+    {
+        Permission.ORG_READ,
+        Permission.MEMBERS_READ,
+        Permission.EMPLOYEES_READ,
+        Permission.DEPARTMENTS_READ,
+    }
+)
 
 ROLE_PERMISSIONS: dict[OrganizationRole, frozenset[Permission]] = {
     OrganizationRole.VIEWER: _VIEWER,

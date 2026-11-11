@@ -67,6 +67,13 @@ class ConflictError(AppError):
     code = "conflict"
 
 
+class UnprocessableError(AppError):
+    """Well-formed input that breaks a business rule (e.g. a terminated manager)."""
+
+    status_code = 422
+    code = "unprocessable"
+
+
 class ServiceUnavailableError(AppError):
     status_code = 503
     code = "service_unavailable"
