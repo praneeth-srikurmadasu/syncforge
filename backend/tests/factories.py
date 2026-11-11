@@ -1,10 +1,19 @@
 """Test data builders. Each creates a row and flushes it so its ID is available."""
 
 import uuid
+from datetime import date
 
 from sqlalchemy.orm import Session
 
-from app.models import Organization, OrganizationMembership, OrganizationRole, User
+from app.models import (
+    Department,
+    Employee,
+    EmploymentStatus,
+    Organization,
+    OrganizationMembership,
+    OrganizationRole,
+    User,
+)
 from app.security.passwords import hash_password
 from app.security.tokens import create_access_token
 
@@ -52,3 +61,46 @@ def add_member(
 
 def auth_headers(user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(user.id).token}"}
+
+
+def create_department(session: Session, organization: Organization, name: str) -> Department:
+    department = Department(organization_id=organization.id, name=name)
+    session.add(department)
+    session.flush()
+    return department
+
+
+def create_employee(
+    session: Session,
+    organization: Organization,
+    *,
+    first_name: str = "Grace",
+    last_name: str = "Hopper",
+    email: str | None = None,
+    employee_number: str | None = None,
+    department: Department | None = None,
+    manager: Employee | None = None,
+    designation: str | None = "Engineer",
+    location: str | None = "Bengaluru",
+    employment_status: EmploymentStatus = EmploymentStatus.ACTIVE,
+    joining_date: date = date(2024, 1, 15),
+    termination_date: date | None = None,
+) -> Employee:
+    suffix = uuid.uuid4().hex[:8]
+    employee = Employee(
+        organization_id=organization.id,
+        employee_number=employee_number or f"E-{suffix}",
+        first_name=first_name,
+        last_name=last_name,
+        email=email or f"{first_name.lower()}.{suffix}@acme.example",
+        department_id=department.id if department else None,
+        manager_id=manager.id if manager else None,
+        designation=designation,
+        location=location,
+        employment_status=employment_status,
+        joining_date=joining_date,
+        termination_date=termination_date,
+    )
+    session.add(employee)
+    session.flush()
+    return employee
