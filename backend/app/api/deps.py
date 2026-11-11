@@ -1,5 +1,7 @@
-"""Shared FastAPI dependencies: database session and the authenticated user."""
+"""Shared FastAPI dependencies: database session, authenticated user, organization access."""
 
+import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Annotated
 
@@ -11,6 +13,7 @@ from app.core.database import get_db
 from app.core.errors import AuthenticationError
 from app.models import User
 from app.repositories.users import RevokedTokenRepository, UserRepository
+from app.security.authorization import OrgContext, Permission, resolve_org_access
 from app.security.tokens import TokenClaims, decode_access_token
 
 DbSession = Annotated[Session, Depends(get_db)]
@@ -56,3 +59,16 @@ def get_current_user(context: Annotated[AuthContext, Depends(get_auth_context)])
 
 CurrentAuth = Annotated[AuthContext, Depends(get_auth_context)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def require_org_permission(permission: Permission) -> Callable[..., OrgContext]:
+    """Dependency factory: `Depends(require_org_permission(Permission.ORG_READ))`.
+
+    Reads `organization_id` from the URL path, then enforces organization isolation
+    (non-members get 404) and the permission (members without it get 403).
+    """
+
+    def dependency(organization_id: uuid.UUID, user: CurrentUser, db: DbSession) -> OrgContext:
+        return resolve_org_access(db, user, organization_id, permission)
+
+    return dependency
