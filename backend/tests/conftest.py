@@ -28,7 +28,8 @@ from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine, text  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
-from app.core.config import get_settings  # noqa: E402
+from app.core.config import Settings, get_settings  # noqa: E402
+from tests.mock_servers import MODULES, RunningMock, start  # noqa: E402
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
@@ -108,3 +109,43 @@ def client(db_session: Session) -> Iterator[TestClient]:
             yield test_client
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+
+# ---- mock external services (connector tests) ----------------------------------------
+
+
+@pytest.fixture(scope="session")
+def mock_services() -> Iterator[dict[str, RunningMock]]:
+    """The three mock APIs, running as real HTTP servers for the whole test session."""
+    started = {name: start(module) for name, module in MODULES.items()}
+    try:
+        yield {name: running for name, (_server, _thread, running) in started.items()}
+    finally:
+        for server, thread, _running in started.values():
+            server.should_exit = True
+            thread.join(timeout=5)
+
+
+@pytest.fixture
+def mocks(mock_services: dict[str, RunningMock]) -> Iterator[dict[str, RunningMock]]:
+    """Mock services with clean state (no users, faults, tokens) for each test."""
+    from app.connectors.google_workspace import clear_token_cache
+
+    for running in mock_services.values():
+        running.reset()
+    clear_token_cache()
+    yield mock_services
+
+
+@pytest.fixture
+def connector_settings(mock_services: dict[str, RunningMock]) -> Settings:
+    """Settings pointing every connector at the running mocks, with short timeouts."""
+    return get_settings().model_copy(
+        update={
+            "slack_base_url": mock_services["slack"].base_url,
+            "google_workspace_base_url": mock_services["google_workspace"].base_url,
+            "payroll_base_url": mock_services["payroll"].base_url,
+            "connector_connect_timeout_seconds": 1.0,
+            "connector_read_timeout_seconds": 1.0,
+        }
+    )
