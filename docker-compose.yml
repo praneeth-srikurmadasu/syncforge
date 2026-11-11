@@ -1,0 +1,27 @@
+# SyncForge local development stack.
+# Values come from .env in this folder (copy .env.example to .env first).
+# Phase 2: PostgreSQL. Redis, API, worker, mocks and frontend are added in later phases.
+
+name: syncforge
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: syncforge-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-syncforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-syncforge}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
