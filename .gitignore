@@ -1,0 +1,49 @@
+# ---- Secrets and environment files (only .env.example is tracked)
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+*.p12
+credentials.json
+client_secret*.json
+service-account*.json
+
+# ---- Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+celerybeat-schedule*
+
+# ---- Node / Angular
+node_modules/
+.angular/
+frontend/dist/
+frontend/coverage/
+npm-debug.log*
+
+# ---- Playwright
+test-results/
+playwright-report/
+
+# ---- Local data and logs
+*.sqlite3
+*.db
+dump.rdb
+*.log
+logs/
+
+# ---- Editors and OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+Thumbs.db
+desktop.ini
+.DS_Store
