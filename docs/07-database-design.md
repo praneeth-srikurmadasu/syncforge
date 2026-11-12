@@ -1,6 +1,6 @@
 # 07 - Database Design
 
-> **Scope:** tables implemented as of Phase 4 (migrations `0001`-`0004`). Later phases
+> **Scope:** tables implemented as of Phase 5 (migrations `0001`-`0005`). Later phases
 > append their tables here when they are built.
 
 Database: **PostgreSQL 16** (see [ADR-0002](adr/0002-postgresql-as-system-of-record.md)),
@@ -21,6 +21,14 @@ erDiagram
     CONNECTORS ||--o| CONNECTOR_CREDENTIALS : "authenticates with"
     CONNECTORS ||--o{ EXTERNAL_ACCOUNTS : "manages"
     EMPLOYEES ||--o{ EXTERNAL_ACCOUNTS : "has"
+    ORGANIZATIONS ||--o{ WORKFLOWS : "automates with"
+    WORKFLOWS ||--|{ WORKFLOW_STEPS : "runs in order"
+    CONNECTORS ||--o{ WORKFLOW_STEPS : "used by"
+    EMPLOYEES ||--o{ INTEGRATION_EVENTS : "produces"
+    INTEGRATION_EVENTS ||--|| OUTBOX_EVENTS : "published via"
+    INTEGRATION_EVENTS ||--o{ WORKFLOW_EXECUTIONS : "triggers"
+    WORKFLOWS ||--o{ WORKFLOW_EXECUTIONS : "executed as"
+    WORKFLOW_EXECUTIONS ||--|{ SYNCHRONIZATION_JOBS : "one per step"
 
     ORGANIZATIONS {
         uuid id PK
@@ -115,6 +123,81 @@ erDiagram
         timestamptz created_at
         timestamptz updated_at
     }
+    WORKFLOWS {
+        uuid id PK
+        uuid organization_id FK
+        varchar name
+        varchar description
+        varchar trigger_event_type
+        boolean is_active
+        int version
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    WORKFLOW_STEPS {
+        uuid id PK
+        uuid organization_id FK
+        uuid workflow_id FK
+        int position
+        uuid connector_id FK
+        varchar operation
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    INTEGRATION_EVENTS {
+        uuid id PK
+        uuid organization_id FK
+        varchar event_type
+        uuid employee_id FK
+        jsonb payload
+        varchar correlation_id
+        varchar status
+        int attempts
+        timestamptz locked_until
+        timestamptz started_at
+        timestamptz completed_at
+        varchar last_error
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    OUTBOX_EVENTS {
+        bigint id PK
+        uuid event_id FK
+        timestamptz created_at
+        timestamptz published_at
+        int publish_attempts
+        varchar last_error
+    }
+    WORKFLOW_EXECUTIONS {
+        uuid id PK
+        uuid organization_id FK
+        uuid event_id FK
+        uuid workflow_id FK
+        int workflow_version
+        varchar status
+        timestamptz started_at
+        timestamptz finished_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    SYNCHRONIZATION_JOBS {
+        uuid id PK
+        uuid organization_id FK
+        uuid execution_id FK
+        int position
+        uuid connector_id FK
+        varchar operation
+        uuid employee_id FK
+        varchar status
+        int attempts
+        varchar external_id
+        varchar error_category
+        varchar error_message
+        timestamptz started_at
+        timestamptz finished_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
 ```
 
 *Users* are people who log in to SyncForge. *Employees* are the workforce records SyncForge
@@ -196,7 +279,7 @@ Super Admin is **not** a membership role - it is `users.is_superadmin`.
 Retention: a row is only useful until `expires_at` (an expired token is rejected anyway),
 so rows can be deleted with `DELETE FROM revoked_tokens WHERE expires_at < now()` -
 `ix_revoked_tokens_expires_at` supports this. *A scheduled cleanup job is not implemented
-yet; it will be added with the background workers in Phase 5.*
+yet (it was not part of Phase 5); it is planned as a periodic maintenance task in Phase 6.*
 
 ### `departments` - organizational units
 
@@ -349,6 +432,123 @@ employee have?").
 Why the table exists: email is not a stable identifier (people change it), so updates and
 deactivations must address the external user by the ID the application assigned.
 
+### `workflows` - configured automations
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | no | app | PK |
+| organization_id | uuid | no | | FK -> organizations.id **ON DELETE CASCADE** |
+| name | varchar(100) | no | | Unique per organization |
+| description | varchar(500) | yes | | |
+| trigger_event_type | varchar(50) | no | | One of the five `employee.*` event types (`ck_workflows_trigger`) |
+| is_active | boolean | no | `false` | New workflows never run until activated |
+| version | int | no | `1` | Incremented when the trigger or steps change (`ck_workflows_version_positive`) |
+| created_at / updated_at | timestamptz | no | `now()` | |
+
+Constraints: `uq_workflows_organization_id_name`, `uq_workflows_organization_id_id` (target
+of composite FKs). Index: `ix_workflows_organization_id_trigger_event_type` (the worker's
+lookup "active workflows of this organization for this event type"). Workflows are
+deactivated, not deleted; they go only with their organization.
+
+### `workflow_steps` - ordered connector operations of a workflow
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| id | uuid | no | PK |
+| organization_id, workflow_id | uuid | no | Composite FK -> workflows **ON DELETE CASCADE** |
+| position | int | no | 1, 2, 3, ... (`ck_workflow_steps_position_positive`); unique per workflow |
+| connector_id | uuid | no | Composite FK -> connectors (organization_id, id), **no ON DELETE action, DEFERRABLE INITIALLY DEFERRED** |
+| operation | varchar(30) | no | `create_user` \| `update_user` \| `deactivate_user` (`ck_workflow_steps_operation`) |
+| created_at / updated_at | timestamptz | no | |
+
+Constraint: `uq_workflow_steps_workflow_id_position`. Index: `ix_workflow_steps_connector_id`.
+**Why the connector FK is deferred:** a connector in use must not be deletable, so the FK has
+no `ON DELETE` action. But deleting an organization cascades to both its connectors and its
+workflow steps in one statement, and an immediate check could fire before the cascade had
+removed the steps (found by `test_deleting_an_organization_removes_its_workflows_and_history`).
+Checking at commit keeps both behaviours. Steps are replaced as a whole when a workflow's
+step list changes.
+
+### `integration_events` - durable employee events and their processing status
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | no | app | PK; also the event ID sent through the broker |
+| organization_id | uuid | no | | FK -> organizations.id **ON DELETE CASCADE** |
+| event_type | varchar(50) | no | | `employee.created`, `.updated`, `.department_changed`, `.manager_changed`, `.terminated` |
+| employee_id | uuid | no | | Composite FK -> employees (organization_id, id) **ON DELETE CASCADE** |
+| payload | jsonb | no | | `{"type", "organization_id", "employee_id", "changes": {field: {old, new}}}` - may contain personal data; never logged; the API exposes field names only |
+| correlation_id | varchar(64) | yes | | Request ID of the API call that caused the event (NULL for CLI-created data) |
+| status | varchar(20) | no | `'pending'` | `pending` \| `processing` \| `completed` \| `failed` (`ck_integration_events_integration_event_status`) |
+| attempts | int | no | `0` | Number of claims (redeliveries and recoveries included) |
+| locked_until | timestamptz | yes | | Worker lease while `processing`; deadline for being claimed once published |
+| started_at / completed_at | timestamptz | yes | | Last claim / finish |
+| last_error | varchar(1000) | yes | | Summary such as "1 of 1 workflow execution(s) failed." |
+| created_at / updated_at | timestamptz | no | `now()` | |
+
+Indexes: `(organization_id, created_at)` for the newest-first list, `(organization_id,
+status)` for the status filter, `employee_id`, and the **partial** index
+`ix_integration_events_unfinished_locked_until` on `locked_until WHERE status IN
+('pending', 'processing')` - small, because finished events drop out of it - used by the
+relay's recovery query. Events recorded in one transaction share `created_at` (PostgreSQL
+`now()` is the transaction start); publication order comes from `outbox_events.id`.
+
+### `outbox_events` - events waiting to be handed to the broker
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| id | bigint identity | no | generated | PK; monotonic, gives the publication order |
+| event_id | uuid | no | | FK -> integration_events.id **ON DELETE CASCADE** |
+| created_at | timestamptz | no | `now()` | |
+| published_at | timestamptz | yes | | NULL until the relay published it |
+| publish_attempts | int | no | `0` | |
+| last_error | varchar(500) | yes | | Last broker error (e.g. connection refused) |
+
+Index: partial `ix_outbox_events_unpublished` on `id WHERE published_at IS NULL`. Written in
+the same transaction as the employee change ([ADR-0012](adr/0012-transactional-outbox.md)).
+
+### `workflow_executions` - one run of one workflow for one event
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | no | app | PK |
+| organization_id | uuid | no | | Part of composite FKs |
+| event_id | uuid | no | | FK -> integration_events.id **ON DELETE CASCADE** |
+| workflow_id | uuid | no | | Composite FK -> workflows **ON DELETE CASCADE** |
+| workflow_version | int | no | | Version of the workflow when the execution started |
+| status | varchar(20) | no | `'running'` | `running` \| `succeeded` \| `failed` |
+| started_at / finished_at | timestamptz | yes | | |
+| created_at / updated_at | timestamptz | no | `now()` | |
+
+Constraints: **`uq_workflow_executions_event_id_workflow_id`** - one execution per (event,
+workflow), the core of idempotent redelivery; `uq_workflow_executions_organization_id_id`.
+Index: `(organization_id, workflow_id, created_at)` for execution history.
+
+### `synchronization_jobs` - one step of one execution
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | no | app | PK |
+| organization_id, execution_id | uuid | no | | Composite FK -> workflow_executions **ON DELETE CASCADE** |
+| position | int | no | | Copied from the step; unique per execution |
+| connector_id | uuid | no | | Copied from the step; composite FK -> connectors **ON DELETE CASCADE** |
+| operation | varchar(30) | no | | Copied from the step |
+| employee_id | uuid | no | | Composite FK -> employees **ON DELETE CASCADE** |
+| status | varchar(20) | no | `'pending'` | `pending` \| `running` \| `succeeded` \| `failed` \| `skipped` |
+| attempts | int | no | `0` | External calls attempted (Phase 6 adds per-attempt history) |
+| external_id | varchar(255) | yes | | ID in the external application, when known |
+| error_category / error_message | varchar(30) / varchar(500) | yes | | Normalized failure, or the reason a job was skipped |
+| started_at / finished_at | timestamptz | yes | | |
+| created_at / updated_at | timestamptz | no | `now()` | |
+
+Constraints: `uq_synchronization_jobs_execution_id_position`, operation and position checks.
+Indexes: `(organization_id, status)`, `connector_id`.
+
+Retention (all event tables): nothing is deleted today except with the organization. Events,
+executions and jobs are the synchronization history that the audit log (Phase 7) and the
+dashboard (Phase 8) read. A retention job removing published outbox rows and old finished
+events after a configurable period is a documented future improvement.
+
 ## 4. Migration strategy
 
 - Every schema change is an **Alembic migration** in `backend/migrations/versions/`,
@@ -386,6 +586,15 @@ Commands (from `backend/`): `alembic upgrade head`, `alembic downgrade -1`,
   external API without holding row locks, then write the result in a short transaction.
   A slow vendor therefore cannot block other requests; races on the same link are settled
   by the unique constraint on `(connector_id, employee_id)`.
+- **Outbox in the same transaction.** An employee change, its `integration_events` rows and
+  its `outbox_events` rows commit together ([ADR-0012](adr/0012-transactional-outbox.md)).
+- **Worker transactions are short.** The engine claims an event with one atomic `UPDATE ...
+  RETURNING` (commit), plans executions (commit), and for each step commits "running"
+  before the external call and the result after it. A crash therefore leaves a precise
+  record of how far processing got ([docs/11](11-workflow-engine.md)).
+- **Relay locking.** The relay selects unpublished outbox rows and expired events with
+  `FOR UPDATE SKIP LOCKED`, so concurrent relays never block on, or double-publish, the
+  same rows in one round.
 
 ## 6. Test database
 

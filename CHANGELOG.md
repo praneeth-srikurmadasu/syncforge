@@ -4,6 +4,55 @@ All notable changes to SyncForge are recorded here.
 
 ## [Unreleased]
 
+### Phase 5 - Workflow engine and asynchronous event processing (complete)
+
+#### Added
+- Alembic migration `0005`: `workflows`, `workflow_steps`, `integration_events`,
+  `outbox_events`, `workflow_executions`, `synchronization_jobs`, with composite
+  same-organization foreign keys.
+- Transactional outbox: employee changes write their integration events and outbox rows in
+  the same transaction; the request ID is stored as the event's correlation ID; the
+  lifecycle log line now carries the event ID.
+- Workflow API: create, list (filters), get, update (versioned), activate, deactivate,
+  execution history. Events API: list (status, type, employee filters) and detail with
+  executions and per-step jobs; changed field names only, never values.
+- Permissions `workflows:read`, `events:read` (all members) and `workflows:manage`
+  (Integration Manager, Organization Admin).
+- Workflow engine: atomic claim with a worker lease, one execution per event and workflow,
+  sequential steps through `ConnectorService`, resume without repeating finished steps,
+  `skipped` vs `failed` job outcomes, current-state processing.
+- Outbox relay (`python -m app.cli outbox-relay`): ordered publishing with
+  `FOR UPDATE SKIP LOCKED`, broker-outage tolerance, re-dispatch of events whose lease
+  expired.
+- Celery worker (`app/workers/`) with late acknowledgement, reject on worker loss,
+  prefetch 1, JSON-only messages and structured JSON logs.
+- Redis 7 in Docker Compose (no persistence; the database is the source of truth).
+- `python -m mockservices.run_all` starts all three mock services in one process.
+- Settings `REDIS_URL`, `WORKER_LEASE_SECONDS`, `OUTBOX_BATCH_SIZE`,
+  `OUTBOX_POLL_INTERVAL_SECONDS`.
+- Dependencies: `celery` 5.7.0, `redis` 8.1.0.
+- 64 new tests (396 total), including a real Celery worker with an in-memory broker,
+  duplicate delivery and crash recovery.
+- Documentation: event-driven architecture (docs/09, new), workflow engine (docs/11, new),
+  ADR-0010 (Redis and Celery), ADR-0011 (asynchronous processing, at-least-once),
+  ADR-0012 (transactional outbox); architecture, components, database, API, security,
+  troubleshooting and mock-services README updated.
+
+#### Changed
+- Lifecycle events are no longer only logged after the commit: they are stored durably in
+  the same transaction (closes the Phase 3 gap where a crash between commit and log could
+  lose an event).
+
+#### Fixed
+- Outbox relay recovery renewed the lease of an abandoned `processing` event, so the next
+  worker skipped it indefinitely; recovered events are now reset to `pending` (found in the
+  live crash demonstration, covered by a new test).
+- The `workflow_steps` -> `connectors` foreign key is checked at commit, so deleting an
+  organization is not refused by the order of its cascades.
+
+#### Removed
+- Empty `.gitkeep` placeholders in folders that now contain code.
+
 ### Phase 4 - Connector framework and external application integrations (complete)
 
 #### Added

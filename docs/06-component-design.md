@@ -1,7 +1,7 @@
 # 06 - Component Design
 
-> **Scope:** modules implemented as of Phase 4. Each later phase adds its module here
-> (connectors, workflows, events, reliability). Nothing here is planned-only.
+> **Scope:** modules implemented as of Phase 5. Each later phase adds its module here
+> (reliability, data integrity). Nothing here is planned-only.
 
 ## 1. Modules so far
 
@@ -10,6 +10,8 @@
 | Identity and organizations | `models/{user,organization,revoked_token}.py`, `services/{auth,organizations}.py`, `security/` | [Security design](15-security-design.md) |
 | **Workforce (employees and departments)** | `models/employee.py`, `repositories/employees.py`, `services/employees.py`, `schemas/employees.py`, `api/v1/{employees,departments}.py`, `events/lifecycle.py` | this document |
 | Connectors (external applications) | `connectors/`, `models/connector.py`, `repositories/connectors.py`, `services/connectors.py`, `schemas/connectors.py`, `api/v1/connectors.py`, `security/encryption.py` | [Connector framework](10-connector-framework.md) |
+| Events (outbox, relay) | `models/event.py`, `events/outbox.py`, `events/relay.py`, `api/v1/events.py`, `schemas/events.py` | [Event-driven architecture](09-event-driven-architecture.md) |
+| Workflows (configuration and engine) | `models/workflow.py`, `repositories/workflows.py`, `services/workflows.py`, `schemas/workflows.py`, `api/v1/workflows.py`, `workflows/engine.py`, `workers/` | [Workflow engine](11-workflow-engine.md) |
 
 ## 2. Workforce module
 
@@ -112,6 +114,7 @@ sequenceDiagram
     participant R as Router (PATCH)
     participant S as EmployeeService
     participant L as events.lifecycle
+    participant O as events.outbox
     participant DB as PostgreSQL
     participant Log as JSON log
 
@@ -125,8 +128,10 @@ sequenceDiagram
     S->>S: apply changes
     S->>L: classify_update(diff(before, after))
     L-->>S: [department_changed, manager_changed, updated]
-    S->>DB: COMMIT
-    S->>Log: one "employee lifecycle event" line per event (IDs + field names)
+    S->>O: record_events(session, events)
+    O->>DB: INSERT integration_events + outbox_events (same transaction)
+    S->>DB: COMMIT (employee, events and outbox rows together)
+    S->>Log: one "employee lifecycle event" line per event (event ID, IDs, field names)
     S-->>R: employee
 ```
 
@@ -134,11 +139,12 @@ Classification rules: termination takes `employment_status` and `termination_dat
 `department_id` and `manager_id` each get their own event; all remaining changed fields
 go into one `employee.updated`. No change means no event.
 
-**Phase 3 limitation, by design:** events are logged after the commit. If the process died
-between commit and log, the event would be lost. Phase 5 closes this gap with the
-transactional outbox: the events are inserted into an outbox table in the *same*
-transaction as the employee change, which is why the service already collects them in
-`emitted_events` before committing.
+**Durability (since Phase 5).** Events are written to the transactional outbox in the same
+transaction as the employee change, so a committed change always has its events and a
+rolled-back change never does. The log line is written only after the commit. In Phase 3
+events were only logged after the commit, and a crash between the two could lose one; the
+outbox closed that gap. Processing is described in
+[docs/09](09-event-driven-architecture.md).
 
 ### 2.5 Termination
 

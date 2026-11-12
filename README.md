@@ -6,7 +6,7 @@ SyncForge keeps employee data consistent across HR, Slack, Google Workspace and 
 turning workforce changes (hire, transfer, termination) into reliably processed, audited
 synchronization events.
 
-> **Status: Phase 4 of 10 complete - connector framework. Next: Phase 5, workflow engine and event processing.**
+> **Status: Phase 5 of 10 complete - workflow engine and event processing. Next: Phase 6, reliability engine (retries, idempotency keys, dead-letter queue, circuit breaker).**
 > See [`PROJECT_STATUS.md`](PROJECT_STATUS.md) for exactly what works today.
 
 ## What works today
@@ -30,8 +30,19 @@ synchronization events.
   5xx), SSRF protection, and manual provisioning operations
 - Local mock Slack, Google Workspace and payroll services with on-demand failure injection
   (**simulated** - see [mock-services/README.md](mock-services/README.md))
-- 332 automated tests against a real PostgreSQL database, including two-session
-  concurrency tests and connector tests over real HTTP against the mocks
+- **Automatic provisioning**: configurable workflows (trigger + ordered connector steps)
+  run by Celery workers when employees are hired, changed or terminated - e.g. hire someone
+  and their Slack, Google and payroll accounts are created about a second later
+- **Transactional outbox**: an employee change and its events commit together; an outbox
+  relay publishes them to Redis and re-sends events whose worker crashed
+- At-least-once delivery with idempotent processing: duplicate deliveries are skipped, a
+  crashed worker's event is resumed without repeating finished steps, and a late event
+  never creates accounts for someone already terminated
+- Events and workflow execution history with per-step status through the API, traceable in
+  the logs by the originating request ID
+- 396 automated tests against a real PostgreSQL database, including two-session
+  concurrency tests, connector tests over real HTTP against the mocks, and a real Celery
+  worker
 
 ## Tech stack
 
@@ -42,7 +53,7 @@ synchronization events.
 | Auth | Argon2id password hashing, JWT (PyJWT) | in use |
 | Integrations | httpx2 (HTTP client), cryptography (Fernet credential encryption) | in use |
 | Testing | Pytest, Starlette TestClient | in use |
-| Background jobs | Redis 7 + Celery | Phase 5 |
+| Background jobs | Redis 7 (broker), Celery 5.7 (workers) | in use |
 | Frontend | Angular 22, TypeScript | Phase 8 |
 | CI | GitHub Actions | Phase 10 |
 
@@ -57,8 +68,8 @@ Copy-Item .env.example .env
 $secret = py -3.13 -c "import secrets; print(secrets.token_urlsafe(64))"
 (Get-Content .env) -replace '^JWT_SECRET_KEY=.*', "JWT_SECRET_KEY=$secret" | Set-Content .env -Encoding ascii
 
-# 2. Start PostgreSQL
-docker compose up -d postgres
+# 2. Start PostgreSQL and Redis
+docker compose up -d postgres redis
 
 # 3. Backend environment
 cd backend
@@ -82,14 +93,31 @@ $key = python -c "from cryptography.fernet import Fernet; print(Fernet.generate_
 (Get-Content ..\.env) -replace '^CONNECTOR_ENCRYPTION_KEY=.*', "CONNECTOR_ENCRYPTION_KEY=$key" | Set-Content ..\.env -Encoding ascii
 ```
 
-To use connectors locally, start the mock services (one terminal each, from the repository
-root) - see [mock-services/README.md](mock-services/README.md):
+### Run the whole system (automatic provisioning)
+
+Besides the API, run the mock services, a worker and the outbox relay, each in its own
+terminal. The commands use absolute folders and the project's own `python.exe`, so they work
+from any terminal and never pick up another project's tools from `PATH`:
 
 ```powershell
-uvicorn mockservices.slack:app --port 9101 --app-dir mock-services
-uvicorn mockservices.google_workspace:app --port 9102 --app-dir mock-services
-uvicorn mockservices.payroll:app --port 9103 --app-dir mock-services
+# mock Slack / Google Workspace / payroll (simulated)
+Set-Location "$HOME\Projects\syncforge\mock-services"
+& "$HOME\Projects\syncforge\backend\.venv\Scripts\python.exe" -m mockservices.run_all
+
+# worker (Windows needs --pool=solo)
+Set-Location "$HOME\Projects\syncforge\backend"
+& "$HOME\Projects\syncforge\backend\.venv\Scripts\python.exe" -m celery -A app.workers.celery_app worker --loglevel=INFO --pool=solo
+
+# outbox relay
+Set-Location "$HOME\Projects\syncforge\backend"
+& "$HOME\Projects\syncforge\backend\.venv\Scripts\python.exe" -m app.cli outbox-relay
 ```
+
+(Adjust `$HOME\Projects\syncforge` if you cloned elsewhere.) Then create connectors and an
+active workflow through the API ([docs/08](docs/08-api-design.md), sections 7-8) and add an
+employee: the event appears under `GET .../events` and is processed within about a second.
+How it works: [docs/09](docs/09-event-driven-architecture.md),
+[docs/11](docs/11-workflow-engine.md).
 
 Optional - load demo data. Register a user first (for example through `/docs`), then:
 
@@ -131,17 +159,19 @@ backend/
     schemas/        request/response contracts
     security/       password hashing, JWT, roles and permissions
     services/       business rules and transactions
-    events/         lifecycle event detection (pure functions)
     connectors/     connector interface, registry, HTTP client, Slack/Google/payroll adapters
-    cli.py          operator commands (create-superadmin, seed-demo)
+    events/         lifecycle detection, transactional outbox, outbox relay
+    workflows/      workflow engine (claim, plan, run steps, record outcomes)
+    workers/        Celery app and tasks
+    cli.py          operator commands (create-superadmin, seed-demo, outbox-relay)
     seed.py         demo data
-  migrations/       Alembic migrations (0001-0004)
+  migrations/       Alembic migrations (0001-0005)
   tests/            pytest suite
 docs/               architecture, database, API, security, ADRs
 frontend/           Angular app (Phase 8)
 mock-services/      mock Slack / Google Workspace / payroll APIs (simulated, failure injection)
 infrastructure/     Dockerfiles and scripts (later phases)
-docker-compose.yml  local PostgreSQL (more services added per phase)
+docker-compose.yml  local PostgreSQL and Redis (more services added per phase)
 ```
 
 ## Documentation
@@ -152,8 +182,10 @@ docker-compose.yml  local PostgreSQL (more services added per phase)
 | [Component design](docs/06-component-design.md) | Employee domain model, lifecycle, validation layers, events, concurrency |
 | [Database design](docs/07-database-design.md) | ER diagram, tables, constraints, migrations, transactions |
 | [API design](docs/08-api-design.md) | Conventions, error codes, endpoint reference |
+| [Event-driven architecture](docs/09-event-driven-architecture.md) | Transactional outbox, relay, Redis, Celery workers, leases, delivery guarantees |
 | [Connector framework](docs/10-connector-framework.md) | Interface, adapters, real vs simulated, error normalization, OAuth lifecycle, credential security, adding a connector |
+| [Workflow engine](docs/11-workflow-engine.md) | Workflows, executions, job states, processing sequence, failure boundaries |
 | [Security design](docs/15-security-design.md) | Auth flow, JWT lifecycle, passwords, secrets, roles, tenant isolation, connector credentials, SSRF |
-| [Troubleshooting](docs/21-troubleshooting.md) | Investigating failed requests, connector errors, test and Windows issues |
-| [Architecture decisions](docs/adr/) | ADR-0001 to ADR-0009 |
+| [Troubleshooting](docs/21-troubleshooting.md) | Investigating failed requests and synchronizations, connector, worker, test and Windows issues |
+| [Architecture decisions](docs/adr/) | ADR-0001 to ADR-0012 |
 | [Project plan](PROJECT_PLAN.md), [Status](PROJECT_STATUS.md), [Changelog](CHANGELOG.md) | Progress tracking |

@@ -16,9 +16,16 @@ The defaults can be changed with environment variables: `SLACK_MOCK_TOKEN`,
 
 ## Run
 
-From the repository root, with the backend virtual environment active (it already has
-FastAPI and uvicorn; `pip install -r mock-services/requirements.txt` otherwise), one
-terminal per mock:
+All three in one terminal (Slack 9101, Google 9102, payroll 9103), from the
+`mock-services` folder:
+
+```powershell
+& ..\backend\.venv\Scripts\python.exe -m mockservices.run_all
+```
+
+Or one terminal per mock, from the repository root, with the backend virtual environment
+active (it already has FastAPI and uvicorn; `pip install -r mock-services/requirements.txt`
+otherwise):
 
 ```powershell
 uvicorn mockservices.slack:app --port 9101 --app-dir mock-services

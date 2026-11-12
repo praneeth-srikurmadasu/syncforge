@@ -78,6 +78,13 @@ end a session; the cost is one primary-key lookup per request.
   record contains the employee's name; `Employee.__repr__` likewise shows only the ID.
 - The employee API exposes work-related fields only (no salary, personal address or
   government IDs are stored in Phase 3).
+- Integration events store the old and new values of changed fields in
+  `integration_events.payload` (needed for audit and conflict handling). They are never
+  logged, and the events API returns only the **names** of changed fields
+  (`test_events_are_listed_without_personal_data`). Worker logs carry event, execution,
+  connector and employee IDs only (`test_engine_logs_carry_ids_but_no_personal_data`).
+- Broker messages carry only an event ID and a correlation ID - no personal data, no
+  credentials - and use JSON serialization (never pickle).
 
 ## 7. Connector credentials and outbound calls
 
@@ -132,9 +139,13 @@ Endpoints check a **permission**, never a role name. The mapping lives in one pl
 | `departments:manage` - create, rename, delete departments | no | no | yes | yes |
 | `connectors:read` - list and view connectors and linked accounts | yes | yes | yes | yes |
 | `connectors:manage` - configure, test, disconnect connectors; run operations | no | **yes** | yes | yes |
+| `workflows:read` - list and view workflows and their execution history | yes | yes | yes | yes |
+| `workflows:manage` - create, edit, activate, deactivate workflows | no | **yes** | yes | yes |
+| `events:read` - list and view integration events with their executions | yes | yes | yes | yes |
 
-Integration Managers operate integrations (connectors now, workflows in Phase 5) but do not
-manage people, departments or the organization itself.
+Integration Managers operate integrations (connectors and workflows) but do not manage
+people, departments or the organization itself; `test_role_permission_matrix` pins that
+they cannot write employees.
 
 **Super Admin** is a platform-wide flag (`users.is_superadmin`), not a membership role. It
 grants every permission in every organization. It cannot be obtained through the API; an
@@ -199,9 +210,10 @@ lock is removed.
 |---|---|
 | Rate limiting on login/register | Phase 9 |
 | Request body size limits | Phase 9 |
-| Scheduled cleanup of expired `revoked_tokens` rows | Phase 5 |
+| Scheduled cleanup of expired `revoked_tokens` rows | Phase 6 (periodic maintenance task; not done in Phase 5) |
 | Audit log of security-relevant actions (including Super Admin actions) | Phase 7 |
 | Field-level masking of employee personal data for low-privilege roles | Future improvement |
 | Invitations for people who are not registered yet | Future improvement |
 | Secrets manager / envelope encryption for the connector key; bulk re-encryption command | Future improvement |
 | OAuth authorization-code ("Connect with Google") flow | Future improvement |
+| Authentication between workers and Redis (Redis password / TLS). Locally Redis has no password and Docker publishes its port on the host (as for PostgreSQL), which is acceptable on a development machine only | Phase 10 deployment guide |

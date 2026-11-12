@@ -1,6 +1,6 @@
 # 08 - API Design
 
-> **Scope:** endpoints implemented as of Phase 4. Live, always-current reference:
+> **Scope:** endpoints implemented as of Phase 5. Live, always-current reference:
 > **http://127.0.0.1:8000/docs** (Swagger UI) and `/openapi.json`, generated from the code.
 
 ## 1. Conventions
@@ -66,6 +66,12 @@
 | 422 | `employee_not_found` | (connector operations) employee unknown in this organization |
 | 502 | `connector_error` | The external application failed; `details` is the normalized error (category, code, retryable, retry_after, status_code) |
 | 503 | `encryption_not_configured` | `CONNECTOR_ENCRYPTION_KEY` is not set, so credentials cannot be stored |
+| 404 | `workflow_not_found` | Workflow does not exist in this organization |
+| 409 | `workflow_name_taken` | Workflow name already used in this organization |
+| 409 | `connector_disconnected` | (workflow activation) a step uses a disconnected connector; `details.connectors` lists their names |
+| 422 | `connector_not_found` | (workflow steps) connector unknown in this organization - also for another organization's connector; `details.ids` |
+| 422 | `duplicate_step` | The same connector and operation appear more than once in a workflow |
+| 404 | `event_not_found` | Integration event does not exist in this organization |
 | 500 | `internal_error` | Unexpected server error (details only in logs) |
 | 503 | `not_ready` | Readiness check failed (database unreachable) |
 
@@ -293,11 +299,14 @@ changed field appears in exactly one of them:
 | `manager_id` changed | `employee.manager_changed` |
 | Any other tracked field | `employee.updated` |
 
-In Phase 3 events are written to the application log as
-`{"message": "employee lifecycle event", "event_type", "organization_id", "employee_id",
-"changed_fields"}` - IDs and field names only, never names or emails. In Phase 5 the same
-events are stored in the transactional outbox within the employee's database transaction
-and processed by workers.
+Since Phase 5 every event is stored (`integration_events`, plus an `outbox_events` row) in
+the **same database transaction** as the employee change, and processed asynchronously by
+workers ([docs/09](09-event-driven-architecture.md)). The employee endpoints therefore
+return as soon as the change is committed; external applications are updated shortly after.
+Events can be followed through the events API (section 9). After the commit, each event is
+also logged as `{"message": "employee lifecycle event", "event_type", "event_id",
+"organization_id", "employee_id", "changed_fields"}` - IDs and field names only, never names
+or emails. The request ID becomes the event's `correlation_id`.
 
 ## 7. Connectors
 
@@ -362,7 +371,95 @@ operations require a link (`409 not_linked`). External failures return
 `502 connector_error` with the normalized error in `details`; nothing is linked when
 `create_user` fails. Operations are attempted **once** in Phase 4 (retries: Phase 6).
 
-## 8. PowerShell examples
+## 8. Workflows - `/api/v1/organizations/{organization_id}/workflows`
+
+Design and execution semantics: [workflow engine](11-workflow-engine.md).
+
+| Method and path | Permission | Notes |
+|---|---|---|
+| `GET .../workflows` | `workflows:read` | Paginated, sorted by name. Filters: `trigger_event_type`, `is_active` |
+| `POST .../workflows` | `workflows:manage` | Create; **starts inactive**; `201` |
+| `GET .../workflows/{workflow_id}` | `workflows:read` | |
+| `PATCH .../workflows/{workflow_id}` | `workflows:manage` | `name`, `description`, `trigger_event_type`, `steps` (replaces the whole list). Trigger or step changes increment `version` |
+| `POST .../workflows/{workflow_id}/activate` | `workflows:manage` | Idempotent; `409 connector_disconnected` if a step's connector is disconnected |
+| `POST .../workflows/{workflow_id}/deactivate` | `workflows:manage` | Idempotent; history is kept |
+| `GET .../workflows/{workflow_id}/executions` | `workflows:read` | Newest first, with per-step jobs. Filter: `execution_status` (`running`, `succeeded`, `failed`) |
+
+Every member holds `workflows:read`; Integration Managers and Organization Admins hold
+`workflows:manage`. There is no delete endpoint: deactivate instead, so execution history
+stays readable.
+
+### Create
+
+```json
+POST .../workflows
+{"name": "Onboarding", "description": "Accounts for new hires.",
+ "trigger_event_type": "employee.created",
+ "steps": [{"connector_id": "<slack id>", "operation": "create_user"},
+           {"connector_id": "<google id>", "operation": "create_user"},
+           {"connector_id": "<payroll id>", "operation": "create_user"}]}
+```
+
+`201`:
+```json
+{"id": "...", "name": "Onboarding", "description": "Accounts for new hires.",
+ "trigger_event_type": "employee.created", "is_active": false, "version": 1,
+ "steps": [{"position": 1, "connector_id": "...", "connector_name": "slack",
+            "connector_type": "slack", "operation": "create_user"}, ...],
+ "created_at": "...", "updated_at": "..."}
+```
+
+Validation: 1 to 20 steps; triggers are the five `employee.*` event types; operations are
+`create_user`, `update_user`, `deactivate_user`; each connector must belong to the
+organization (`422 connector_not_found`); a connector + operation pair at most once
+(`422 duplicate_step`); names unique (`409 workflow_name_taken`).
+
+### Execution object
+
+Returned by `.../executions` and inside an event's detail:
+
+```json
+{"id": "...", "event_id": "...", "event_type": "employee.created", "employee_id": "...",
+ "workflow_id": "...", "workflow_name": "Onboarding", "workflow_version": 1,
+ "status": "failed", "started_at": "...", "finished_at": "...",
+ "jobs": [{"position": 1, "connector_id": "...", "operation": "create_user",
+           "status": "succeeded", "attempts": 1, "external_id": "U4C78E57EE5",
+           "error_category": null, "error_message": null, "started_at": "...", "finished_at": "..."},
+          {"position": 3, "connector_id": "...", "operation": "create_user",
+           "status": "failed", "attempts": 1, "external_id": null,
+           "error_category": "server", "error_message": "Simulated failure (503).", ...}]}
+```
+
+Job `status`: `pending`, `running`, `succeeded`, `failed`, `skipped` (`error_message` then
+says why, e.g. "The employee has no account in this application.").
+
+## 9. Events - `/api/v1/organizations/{organization_id}/events`
+
+Read-only. Events are created by employee changes and processed by workers.
+
+| Method and path | Permission | Notes |
+|---|---|---|
+| `GET .../events` | `events:read` | Newest first. Filters: `event_status` (`pending`, `processing`, `completed`, `failed`), `event_type`, `employee_id` |
+| `GET .../events/{event_id}` | `events:read` | The event plus every workflow execution it triggered, with jobs |
+
+Every member holds `events:read`.
+
+```json
+{"id": "...", "event_type": "employee.created", "employee_id": "...",
+ "changed_fields": ["email", "employee_number", "employment_status", "first_name",
+                    "joining_date", "last_name"],
+ "status": "completed", "correlation_id": "demo-hire-2", "attempts": 1,
+ "created_at": "...", "started_at": "...", "completed_at": "...", "last_error": null,
+ "executions": [ ... ]}
+```
+
+**Privacy:** events expose *which* fields changed, never the old or new values (names,
+emails); `test_events_are_listed_without_personal_data` checks that the values do not appear
+in the response. The values stay in the database for workers and the audit log.
+
+`attempts` above 1 means the event was redelivered or recovered after a worker failure.
+
+## 10. PowerShell examples
 
 ```powershell
 $base = "http://127.0.0.1:8000/api/v1/auth"
@@ -404,4 +501,16 @@ $slack = Invoke-RestMethod -Method Post $con -Headers $h -ContentType "applicati
 Invoke-RestMethod -Method Post "$con/$($slack.id)/test" -Headers $h
 $op = @{ operation = "create_user"; employee_id = $grace.id } | ConvertTo-Json
 Invoke-RestMethod -Method Post "$con/$($slack.id)/operations" -Headers $h -ContentType "application/json" -Body $op
+```
+
+```powershell
+# Workflows and events (API, worker, relay and mocks running - see docs/09, section 10)
+$wf = "$api/organizations/$($org.id)/workflows"
+$body = @{ name = "Onboarding"; trigger_event_type = "employee.created";
+           steps = @(@{ connector_id = $slack.id; operation = "create_user" }) } | ConvertTo-Json -Depth 5
+$onboarding = Invoke-RestMethod -Method Post $wf -Headers $h -ContentType "application/json" -Body $body
+Invoke-RestMethod -Method Post "$wf/$($onboarding.id)/activate" -Headers $h
+# ... create an employee (as above), then:
+$events = Invoke-RestMethod "$api/organizations/$($org.id)/events?event_type=employee.created" -Headers $h
+Invoke-RestMethod "$api/organizations/$($org.id)/events/$($events.items[0].id)" -Headers $h
 ```

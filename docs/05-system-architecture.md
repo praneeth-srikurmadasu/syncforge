@@ -1,7 +1,7 @@
 # 05 - System Architecture
 
-> **Scope:** describes what is implemented as of Phase 4. Sections are added as
-> later phases add components (workers, connectors, frontend). Nothing here is planned-only.
+> **Scope:** describes what is implemented as of Phase 5. Sections are added as
+> later phases add components (reliability engine, frontend). Nothing here is planned-only.
 
 ## 1. Current components
 
@@ -11,15 +11,20 @@ flowchart LR
     subgraph api["FastAPI application (backend/app)"]
         mw["RequestContextMiddleware<br/>request ID + timing log"]
         cors["CORSMiddleware"]
-        routes["Routers<br/>/health, /ready, /api/v1/auth,<br/>/api/v1/organizations,<br/>.../departments, .../employees,<br/>.../connectors, /connector-types"]
+        routes["Routers<br/>/health, /ready, /api/v1/auth,<br/>/api/v1/organizations,<br/>.../departments, .../employees,<br/>.../connectors, /connector-types,<br/>.../workflows, .../events"]
         deps["Dependencies<br/>DB session, current user,<br/>require_org_permission"]
-        svc["Services<br/>AuthService, OrganizationService,<br/>DepartmentService, EmployeeService,<br/>ConnectorService"]
-        events["events.lifecycle<br/>pure event classification"]
-        repo["Repositories<br/>User, RevokedToken, Organization,<br/>Department, Employee,<br/>Connector, ExternalAccount"]
+        svc["Services<br/>Auth, Organization, Department,<br/>Employee, Connector, Workflow"]
+        events["events<br/>lifecycle classification,<br/>record_events (outbox)"]
+        repo["Repositories"]
         sec["Security<br/>Argon2id, JWT, RBAC,<br/>credential encryption"]
         conn["Connector framework<br/>registry, adapters,<br/>ConnectorHttpClient"]
     end
     db[("PostgreSQL 16<br/>Docker Compose")]
+    relay["Outbox relay<br/>python -m app.cli outbox-relay"]
+    redis[("Redis 7<br/>Docker Compose")]
+    subgraph worker["Celery worker (same codebase)"]
+        engine["EventProcessor<br/>workflow engine"]
+    end
     subgraph mocks["mock-services (simulated)"]
         slack["Slack SCIM mock :9101"]
         google["Google Directory mock :9102"]
@@ -36,14 +41,22 @@ flowchart LR
     svc --> events
     svc --> conn
     repo --> db
-    conn -- "HTTPS/HTTP, timeouts,<br/>host allowlist" --> slack
+    relay -- "unpublished outbox rows" --> db
+    relay -- "event IDs" --> redis
+    redis --> engine
+    engine -- "claim, record steps" --> db
+    engine -- "via ConnectorService" --> conn
+    conn -- "HTTP, timeouts,<br/>host allowlist" --> slack
     conn --> google
     conn --> payroll
 ```
 
 **Architecture style:** modular monolith (see [ADR-0001](adr/0001-modular-monolith-with-fastapi.md)).
-One deployable API process with clearly separated layers. Background workers will be
-added in Phase 5 as separately scalable processes that share the same codebase.
+One codebase, three kinds of process: the **API**, the **outbox relay** and the **Celery
+workers**. They share models, services and connectors, and scale independently. PostgreSQL
+is the system of record; Redis only carries "process event X" messages. The event pipeline
+is described in [docs/09](09-event-driven-architecture.md) and the workflow engine in
+[docs/11](11-workflow-engine.md).
 
 ## 2. Application layers
 
@@ -55,7 +68,9 @@ added in Phase 5 as separately scalable processes that share the same codebase.
 | Repositories | `app/repositories/` | All database queries | make business decisions |
 | Models | `app/models/` | SQLAlchemy table definitions and DB constraints | contain behaviour beyond the data |
 | Security | `app/security/` | Password hashing, JWT, role/permission checks and tenant isolation | depend on HTTP |
-| Events | `app/events/` | Pure functions that turn a before/after change into lifecycle events | touch the database or HTTP |
+| Events | `app/events/` | `lifecycle.py`: pure functions that turn a before/after change into lifecycle events. `outbox.py`: stage events and outbox rows in the caller's transaction. `relay.py`: publish outbox rows, recover expired leases | commit on behalf of the caller (`outbox.py`), or contain workflow logic |
+| Workflows | `app/workflows/` | `engine.py`: claim an event, plan executions, run steps through `ConnectorService`, record outcomes | build HTTP responses |
+| Workers | `app/workers/` | Celery app configuration and thin tasks that open a session and call the engine | contain business rules |
 | Connectors | `app/connectors/` | Adapters translating the common interface into each vendor's API; one hardened HTTP client; error normalization | contain business rules or touch the database |
 | Core | `app/core/` | Settings, logging, middleware, errors, DB engine | depend on features |
 
@@ -124,9 +139,16 @@ Implementation: `app/core/errors.py`.
   `event_type`, `employee_id` and `changed_fields` (see [component design](06-component-design.md)).
 - Connector calls log connector, organization and employee IDs, operation, outcome,
   error category and latency - never credentials, config values or payloads.
+- Workers and the relay write the same JSON format. A worker uses the event's
+  **correlation ID** (the request ID of the API call that caused the event) as its
+  `request_id`, so one ID links the API request, the event and every worker line.
 
 **Investigating a failed request:** take the `request_id` from the error response and
 search the logs for it - every line written while handling that request carries it.
+
+**Investigating a failed synchronization:** find the event (`GET .../events?event_status=failed`),
+open it (`GET .../events/{id}`) to see which job failed and why, then search the worker
+logs for the event's `correlation_id` or `event_id`.
 
 ## 6. Health and readiness
 
@@ -134,6 +156,10 @@ search the logs for it - every line written while handling that request carries 
 |---|---|---|
 | `GET /health` | Liveness: is the process running? | No - a slow database must not cause restarts |
 | `GET /ready` | Readiness: can it serve traffic? | Yes - runs `SELECT 1`; returns `503 not_ready` if the DB is unreachable |
+
+The API's readiness does not depend on Redis or the workers: employee changes are recorded
+in the outbox even while they are down, and processed when they return. Worker and relay
+health checks are part of the observability work in Phase 9.
 
 ## 7. Configuration
 

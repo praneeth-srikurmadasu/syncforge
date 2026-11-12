@@ -1,7 +1,8 @@
 # 10 - Connector Framework
 
-> **Scope:** implemented in Phase 4. Automatic execution from workflows is Phase 5;
-> retries, idempotency keys and the circuit breaker are Phase 6. Nothing here is planned-only.
+> **Scope:** implemented in Phase 4. Since Phase 5 the workflow engine runs the same
+> operations automatically ([docs/11](11-workflow-engine.md)); retries, idempotency keys and
+> the circuit breaker are Phase 6. Nothing here is planned-only.
 
 A **connector** is a configured connection from one organization to one external
 application. The framework gives every application the same five operations and the same
@@ -80,7 +81,7 @@ classDiagram
 | `security/encryption.py` | Credential encryption at rest (section 7) |
 
 **Why adapters ([ADR-0008](adr/0008-connector-adapter-pattern.md)):** the workflow engine
-in Phase 5 will call `connector.create_user(profile)` without knowing the vendor.
+(Phase 5) calls the operations through `ConnectorService` without knowing the vendor.
 Business rules live once, in the service:
 - who may run what;
 - tenant checks;

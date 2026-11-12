@@ -1,7 +1,7 @@
 # SyncForge - Project Status
 
-**Current phase:** 4 complete - awaiting approval to start Phase 5 (Workflow engine and event processing)
-**Last updated:** 2026-11-11
+**Current phase:** 5 complete - awaiting approval to start Phase 6 (Reliability engine and failure recovery)
+**Last updated:** 2026-11-12
 
 | Phase | Status |
 |---|---|
@@ -9,8 +9,65 @@
 | 2 - Backend foundation, auth, organizations | Complete |
 | 3 - Employee management | Complete |
 | 4 - Connector framework and mock services | Complete |
-| 5 - Workflow engine and event processing | Next (awaiting approval) |
-| 6-10 | Not started |
+| 5 - Workflow engine and event processing | Complete |
+| 6 - Reliability engine and failure recovery | Next (awaiting approval) |
+| 7-10 | Not started |
+
+## Phase 5 progress
+
+| Part | Scope | Status | Verified on |
+|---|---|---|---|
+| 1 | Tables `workflows`, `workflow_steps`, `integration_events`, `outbox_events`, `workflow_executions`, `synchronization_jobs` (migration `0005`); employee changes write events and outbox rows in the same transaction; correlation IDs | Done | Windows 11, Python 3.13.17, Docker PostgreSQL 16 |
+| 2 | Workflow configuration API (CRUD, versioning, activate/deactivate, execution history) and events API (list, filters, detail); `workflows:*`, `events:read` permissions | Done | same |
+| 3 | Engine (claim with lease, one execution per event and workflow, ordered steps, resume), outbox relay (publish, broker-outage tolerance, lease recovery), Celery worker, Redis in Docker Compose | Done | same, plus Redis 7 in Docker |
+| 4 | Documentation (docs/09, docs/11, ADR-0010 to ADR-0012, updates), live verification | Done | same |
+
+### Final Phase 5 verification (actual results)
+
+- `ruff check .` - All checks passed (backend and mock-services)
+- `ruff format --check .` - 109 files already formatted (backend), 7 (mock-services)
+- `alembic check` - no drift after migration `0005` (upgrade 0004 -> 0005 applied to the
+  Windows development database)
+- `python -m pytest` - **396 passed on Windows** (57.41 s); checkpoints on Windows after
+  each part: 351, 378, 396
+- Live run on Windows - API, worker (`--pool=solo`), outbox relay, the three mocks and
+  Redis as separate processes:
+  - three events recorded while no worker or relay was running waited in the outbox; when
+    the relay started it published them (`"count": 3`) and the worker processed them in order
+  - hire #2: Slack, Google Workspace and payroll accounts created automatically, each with
+    an external ID; task runtime 0.69 s
+  - hire #3 with the payroll mock returning 503: Slack and Google `succeeded`, payroll
+    `failed` (category `server`), event `failed`
+  - hire #1 had been terminated before the worker ran: its three `create_user` steps were
+    `skipped` and the termination's `deactivate_user` steps `skipped` - no access created
+    for a terminated employee (workers act on current state, docs/09 section 8)
+  - every worker log line carried the originating request ID (`demo-hire-N`); logs
+    contained IDs only
+- Live run in the Linux development workspace, additionally: worker killed (`kill -9`)
+  while a slow Google call was in progress; the relay re-dispatched the event after the
+  lease expired and the restarted worker completed it on attempt 2 with no duplicate
+  account. This run found a bug - recovery renewed the lease, so the next worker skipped
+  the event - fixed before commit and covered by
+  `test_relay_recovery_hands_a_crashed_workers_event_to_the_next_worker`.
+- The Windows crash-recovery demonstration was optional and not run; crash recovery on
+  Windows is covered by the automated tests above.
+
+## Phase 5 acceptance criteria
+
+| Criterion | Evidence |
+|---|---|
+| Create, update, activate, deactivate workflows; configure triggers and steps | `api/v1/workflows.py`, `services/workflows.py`; `test_workflows_api.py` |
+| Steps executed sequentially; workflow and per-step status tracked | `workflows/engine.py`; `test_onboarding_creates_accounts_in_every_application`, `test_a_failed_step_fails_the_execution_and_skips_the_rest` |
+| Execution history | `GET .../workflows/{id}/executions`, `GET .../events/{id}`; `test_execution_history_shows_per_step_status`, `test_event_detail_includes_executions_and_steps` |
+| Example onboarding and termination workflows | `test_onboarding_...`, `test_offboarding_deactivates_the_accounts`; Windows live run |
+| Persistent events with IDs, payload validation, history, status updates | `integration_events`; `test_event_outbox.py`, `test_events_api.py` |
+| Redis broker and background workers, asynchronous processing | `docker-compose.yml`, `workers/`; `test_celery_worker.py`; Windows live run |
+| Transactional outbox | `events/outbox.py`, `events/relay.py`; `test_employee_change_and_its_events_share_one_transaction`, `test_outbox_relay.py` |
+| At-least-once delivery with idempotent processing (no exactly-once claim) | `test_duplicate_delivery_is_skipped_and_creates_nothing_twice`, `test_an_event_owned_by_a_live_worker_is_not_claimed_twice`; docs/09 section 7 |
+| Correlation IDs | `correlation_id` on events, worker log context; `test_create_records_one_pending_event_...`, `test_the_correlation_id_travels_with_the_message` |
+| Worker restart behaviour | `test_a_crashed_worker_is_resumed_without_repeating_finished_work`, `test_relay_recovery_hands_...`; Linux live crash run |
+| Event-driven architecture, event lifecycle, outbox, broker, worker architecture, workflow state machine, execution sequence, failure boundaries documented with Mermaid diagrams | `docs/09`, `docs/11`, `docs/05`, `docs/07`, ADR-0010 to ADR-0012 |
+| Complete onboarding demonstrated with the mock integrations | Windows live run (hire #2) |
 
 ## Phase 4 progress
 
@@ -27,8 +84,8 @@
 - `ruff format --check .` - 86 files already formatted (backend), 6 (mock-services)
 - `alembic check` - no drift after migration `0004`
 - `python -m pytest` - **332 passed** (includes 25 adapter tests and 28 API tests against
-  the mock services running as real HTTP servers) in the Linux development workspace;
-  the Windows run was reported as all passing (Part 2 checkpoint on Windows: 299 passed).
+  the mock services running as real HTTP servers), on Windows (47.36 s) and in the Linux
+  development workspace.
 - Live demonstration on Windows (API and Slack mock as separate processes): connector
   created (`pending`, fingerprint only); the first connection test consumed a fault left
   queued in the mock and correctly reported `ok: false`, `category: server`; `create_user`
@@ -149,19 +206,30 @@
 
 ## Known limitations (current)
 
-- Connector operations are synchronous, admin-triggered and attempted once; automatic
-  execution is Phase 5, retries/idempotency/circuit breaker are Phase 6.
+- Workflow steps are attempted once per execution: a failed step fails the event; retries
+  with backoff, dead-lettering, replay, idempotency keys towards external APIs and the
+  circuit breaker are Phase 6.
+- A worker crash in the one-commit window after an external application created an account
+  but before SyncForge stored the link makes the resumed `create_user` fail with "already
+  exists" (Phase 6, idempotency keys).
+- Several workers do not guarantee per-employee ordering (steps read current state, so this
+  is safe today); worker and relay health endpoints are Phase 9.
+- Event, outbox and execution tables are never pruned (retention job: future improvement).
 - All three connectors are simulated (verified against local mocks only); real Slack and
   Google need real tenants and, for Google, the JWT-bearer grant (docs/10 section 1).
 - OAuth tokens are cached per process; the browser authorization-code flow is not implemented.
 - The SSRF allowlist matches host names, not resolved IP addresses.
-- Lifecycle events are only logged; durable storage (transactional outbox) and processing
-  arrive in Phase 5.
 - Two admins changing the same employee field from stale screens: last write wins
   (optimistic concurrency is Phase 7).
 - Termination is final; rehiring means creating a new employee record.
 - Free-text employee search is a substring scan within one organization (no trigram index).
 - Members can only be added if they already registered (no email invitations yet).
 - No rate limiting on login/register yet - Phase 9.
-- Expired `revoked_tokens` rows are not cleaned up automatically yet - Phase 5.
+- Expired `revoked_tokens` rows are not cleaned up automatically yet - planned as a periodic
+  maintenance task in Phase 6.
 - No refresh tokens: users log in again after 30 minutes.
+- One unidentified intermittent test failure: in the Linux workspace, 1 of 15 full
+  runs of the suite reported `1 failed, 395 passed`, without the test name being captured.
+  It did not reappear in the following 14 full runs or in 15 runs of the connector, engine,
+  relay, worker and events test files; all Windows runs passed. To be pinned down in the
+  Phase 9 quality pass (or earlier if it reappears).

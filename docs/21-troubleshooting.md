@@ -1,6 +1,6 @@
 # 21 - Troubleshooting
 
-> **Scope:** problems actually met while building and running SyncForge (Phases 1-4), with
+> **Scope:** problems actually met while building and running SyncForge (Phases 1-5), with
 > their causes and fixes. Later phases add their own entries.
 
 ## Investigating a failed request
@@ -8,6 +8,37 @@
 Every response has an `X-Request-ID` header and every error body has `error.request_id`.
 Search the API log for that ID: every line written while handling the request carries it,
 including connector calls (`syncforge.connectors`) and the outbound HTTP request (`httpx2`).
+
+## Investigating a failed synchronization
+
+1. `GET .../events?event_status=failed` lists events that need attention.
+2. `GET .../events/{event_id}` shows each workflow execution and job: which step failed,
+   its `error_category` and `error_message`, and `attempts` (above 1 = redelivered/recovered).
+3. Search the worker log for the event's `correlation_id` (the request ID of the API call
+   that caused it) or its `event_id`: `event processing started`, one
+   `synchronization job finished` per step, `event processing finished`.
+
+## Events and workers
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Events stay `pending`; nothing happens after creating an employee | The outbox relay or the worker is not running (or Redis is down) | Start Redis (`docker compose up -d redis`), the worker and the relay (docs/09, section 10). Nothing is lost: waiting events are published and processed in order once they run |
+| Relay logs `outbox publish failed` with `Connection refused` | Redis is not running | `docker compose up -d redis`; the relay retries on its next poll |
+| The worker terminal shows a traceback from **another project's** folder (e.g. `...\other-project\venv\Scripts\celery.exe`) using a different Python | The SyncForge virtual environment is not active, and another project's `Scripts` folder is on `PATH`, so a bare `celery` command runs that project's Celery | Start it with the project's interpreter: `& "$HOME\Projects\syncforge\backend\.venv\Scripts\python.exe" -m celery -A app.workers.celery_app worker --loglevel=INFO --pool=solo` |
+| `ModuleNotFoundError: No module named 'sqlalchemy'` (relay) or `'mockservices'` (mocks) | Started with the system Python, or from the wrong folder | Use absolute folders and the venv's `python.exe` as in docs/09, section 10 |
+| `Set-Location : Cannot find path '...\backend\mock-services'` | The terminal was already inside `backend`, so a relative path pointed to the wrong place | Use `Set-Location "$HOME\Projects\syncforge\mock-services"` |
+| Worker fails to start on Windows with a pool error | Celery's default (prefork) pool is not supported on Windows | Add `--pool=solo`; scale with more worker processes |
+| An event stays `processing` after a worker was killed | Expected until its lease expires (`WORKER_LEASE_SECONDS`, default 300 s) | Wait: the relay logs `event re-dispatched after lease expiry` and the next worker resumes it. For demos, set `$env:WORKER_LEASE_SECONDS = "20"` in the worker and relay terminals |
+| A hire's `create_user` steps are all `skipped` | The employee was terminated before the worker processed the hire; workers act on current state | Expected and safe: no access is created for terminated employees (docs/09, section 8) |
+| `deactivate_user` steps are `skipped` | The employee never had an account in that application | Expected |
+| A step `failed` with category `configuration` | The connector is disconnected, or its stored version is no longer supported | Reconnect it (`PATCH .../connectors/{id}` with credentials), then retry in Phase 6 |
+| A workflow cannot be activated (`409 connector_disconnected`) | One of its steps uses a disconnected connector | Reconnect the connector or change the step |
+
+## API calls from PowerShell
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `{"error":{"code":"token_expired",...}}` after a while | Access tokens are valid for 30 minutes (setting `ACCESS_TOKEN_EXPIRE_MINUTES`) | Log in again and rebuild the `Authorization` header |
 
 ## Connectors
 
@@ -25,6 +56,7 @@ including connector calls (`syncforge.connectors`) and the outbound HTTP request
 | Symptom | Cause | Fix |
 |---|---|---|
 | Every test errors at setup | PostgreSQL is not running | `docker compose up -d postgres` |
+| Tests need Redis? | No - `test_celery_worker.py` uses Celery's in-memory broker | - |
 | Windows asks whether Python may use the network during tests | The connector tests start the mocks as local HTTP servers on `127.0.0.1` | Allow on private networks only |
 | A refused-connection test reports `timeout` instead of `network` on Windows | Windows retries refused loopback connections for ~2 s | Already handled: that test uses a 5 s connect timeout (docs/10, section 13) |
 
