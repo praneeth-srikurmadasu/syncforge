@@ -29,6 +29,7 @@ from app.models.event import IntegrationEvent, IntegrationEventStatus, OutboxEve
 from app.models.idempotency import IdempotencyRecord
 from app.models.organization import Organization, OrganizationMembership, OrganizationRole
 from app.models.revoked_token import RevokedToken
+from app.models.security_event import SecurityEvent, SecurityEventType
 from app.models.user import User
 from app.models.workflow import (
     TRIGGER_EVENT_TYPES,
@@ -44,6 +45,8 @@ from app.models.workflow import (
 )
 
 __all__ = [
+    "SecurityEvent",
+    "SecurityEventType",
     "AuthRateWindow",
     "CONFLICT_FIELDS",
     "ConflictResolution",

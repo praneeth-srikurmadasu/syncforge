@@ -92,6 +92,31 @@ end a session; the cost is one primary-key lookup per request.
   window ends; the window is short and every refusal is logged (`login rate limited`).
 - Tests: `tests/test_security_hardening.py`.
 
+## 4b. Security events (sign-in history)
+
+`security_events` (migration 0014, `app/security/security_events.py`) records, from the
+auth service: `registered`, `login_succeeded`, `login_failed` (reason `unknown_email`,
+`wrong_password` or `inactive_user`), `login_rate_limited` and
+`registration_rate_limited` (reason = the rule), and `logout`.
+
+- **Why a separate table:** sign-ins happen before an organization is chosen; putting them
+  in the organization-scoped audit log would weaken its tenant model.
+- **Stored:** user ID when known, SHA-256 of the normalized email (groups attempts on one
+  account without storing an email someone typed), client IP, user agent (first 200
+  characters), reason, request ID. **Never** passwords or tokens
+  (`test_no_passwords_or_tokens_are_stored`).
+- **Personal data:** IP and user agent are kept so people can recognize their own
+  sign-ins and administrators can investigate attacks. No retention job yet (future
+  improvement); the trigger provides the switch for one.
+- **Append-only:** a trigger refuses UPDATE always and DELETE unless the transaction sets
+  `syncforge.allow_security_event_delete = 'on'`; no FK to users, so history outlives
+  accounts.
+- **Bounded under attack:** a rate-limit refusal is recorded once per rule, subject and
+  window (the first refused attempt); repeats are logged only.
+- **Who reads it:** everyone sees their own events (`GET /api/v1/auth/activity`, "Recent
+  sign-ins" in Settings); Super Admins see all (`GET /api/v1/security-events`).
+- Tests: `tests/test_security_events.py`.
+
 ## 5. Secrets and configuration
 
 - Real values live in `.env`, which is git-ignored; `.env.example` holds placeholders only.
@@ -293,7 +318,6 @@ lock is removed.
 | Control | Planned phase |
 |---|---|
 | Multi-factor authentication (with password-only sign-in, NIST SP 800-63B-4 recommends 15 or more characters) | Future improvement |
-| Audit entries for login, logout and failed logins (not organization-scoped; today in the structured logs only) | Phase 9 |
 | Audit log retention job (the trigger already provides the switch for it) | Future improvement |
 | Field-level masking of employee personal data for low-privilege roles | Future improvement |
 | Invitations for people who are not registered yet | Future improvement |

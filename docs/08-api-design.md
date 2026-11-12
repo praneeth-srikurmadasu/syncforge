@@ -31,6 +31,7 @@
 | 401 | `token_expired` | Token past its `exp` |
 | 401 | `token_revoked` | Token was logged out |
 | 401 | `invalid_credentials` | Login failed (same message for every cause) |
+| 403 | `superadmin_required` | Platform endpoint (security events) called by someone who is not a Super Admin |
 | 403 | `insufficient_role` | Member of the organization, but the role lacks the permission; `details.required_permission` names it |
 | 404 | `not_found` | Unknown route |
 | 404 | `organization_not_found` | Organization does not exist, is deactivated, or the caller is not a member |
@@ -169,6 +170,33 @@ Errors: `401` (`not_authenticated`, `invalid_token`, `token_expired`, `token_rev
 Auth: bearer token. Revokes **that token only**; other sessions of the same user keep working.
 
 `204` (no body). A second call with the same token returns `401 token_revoked`.
+
+### `GET /api/v1/auth/activity?limit=20`
+Auth: bearer token. The caller's own security events, newest first (`limit` 1-100,
+default 20): sign-ins, failed sign-ins (with `reason`: `wrong_password`, `inactive_user`),
+sign-in refusals by the per-account limit, sign-outs and the account's creation.
+
+`200`:
+```json
+[{"id": 812, "event": "login_succeeded", "reason": null, "client_ip": "203.0.113.24",
+  "user_agent": "Mozilla/5.0 (Windows NT 10.0; ...) Chrome/158.0 ...",
+  "created_at": "2026-11-12T16:55:02.114Z"}]
+```
+Events whose account could not be tied to a user (an unknown email, a refusal by the
+per-IP limit) are not in anyone's own history; Super Admins see them below.
+
+## 3a. Platform security events - `/api/v1/security-events`
+
+### `GET /api/v1/security-events`
+Auth: bearer token of a **Super Admin** (others: `403 superadmin_required`). All security
+events, newest first, paginated (`limit`, `offset`). Filters: `event`
+(`login_succeeded`, `login_failed`, `login_rate_limited`, `logout`, `registered`,
+`registration_rate_limited`), `user_id`, `client_ip`, `since`, `until`.
+
+Items add `user_id`, `account_hash` (SHA-256 of the normalized email: groups attempts on
+one account without storing what was typed) and `request_id` to the fields above.
+A rate-limit refusal is recorded once per rule, subject and window (the first refused
+attempt); repeats are in the logs (`rate limited`).
 
 ## 4. Organizations - `/api/v1/organizations`
 

@@ -39,7 +39,8 @@ permission changes.
 | Data integrity | `conflict.detected`, `conflict.resolved`, `conflict.dismissed`, `data_source_policy.updated` | user or system |
 
 Not recorded: registration, login and logout (they belong to no organization); they
-are in the structured logs. Login auditing is a candidate for Phase 9.
+are in the structured logs. Sign-ins, failed sign-ins and sign-outs are recorded in the separate, platform-level
+`security_events` table (Phase 9; docs/15 section 4b).
 
 ### How it is written - atomically, with the change
 

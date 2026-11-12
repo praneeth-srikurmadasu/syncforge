@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpResourceRequest } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API_BASE } from './http-util';
@@ -24,5 +24,10 @@ export class AuthApi {
 
   logout(): Observable<void> {
     return this.http.post<void>(`${API_BASE}/auth/logout`, null);
+  }
+
+  /** The signed-in user's own recent sign-ins, failures and sign-outs (newest first). */
+  activityRequest(limit = 10): HttpResourceRequest {
+    return { url: `${API_BASE}/auth/activity`, params: { limit } };
   }
 }

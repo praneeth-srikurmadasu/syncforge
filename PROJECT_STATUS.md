@@ -1,6 +1,6 @@
 # SyncForge - Project Status
 
-**Current phase:** 9 in progress - security, API versioning, observability, QA (plan: `docs/PHASE_9_PLAN.md`). Milestones 1-2 delivered.
+**Current phase:** 9 in progress - security, API versioning, observability, QA (plan: `docs/PHASE_9_PLAN.md`). Milestones 1-3 delivered.
 **Last updated:** 2026-11-12
 
 | Phase | Status |
@@ -13,7 +13,7 @@
 | 6 - Reliability engine and failure recovery | Complete |
 | 7 - Data integrity, conflicts, audit logging | Complete |
 | 8 - Angular frontend | Complete |
-| 9 - Security, versioning, observability, QA | In progress (milestones 1-2 of 7) |
+| 9 - Security, versioning, observability, QA | In progress (milestones 1-3 of 7) |
 | 10 | Not started |
 
 ## Phase 9 progress
@@ -22,10 +22,17 @@
 |---|---|---|
 | 1 | Audit and plan (`docs/PHASE_9_PLAN.md`) | Done |
 | 2 | Sign-in and registration rate limits (PostgreSQL fixed windows, hashed subjects, 429 with Retry-After), common-password refusal (registration and CLI), 1 MiB request body limit (413), security headers, CORS headers for `If-Match` / `Idempotency-Key`; UI shows the reasons | Done |
-| 3 | Security events (sign-in audit) | Next |
-| 4-7 | Observability, `/api/v2`, performance, QA | Planned |
+| 3 | Security events: append-only `security_events` (migration 0014) for sign-ins, failures, sign-outs, registrations and rate-limit refusals (recorded once per window); `GET /auth/activity` (own), `GET /security-events` (Super Admins); "Recent sign-ins" in Settings | Done |
+| 4 | Observability | Next |
+| 5-7 | `/api/v2`, performance, QA | Planned |
 
 ### Phase 9 verification (actual results)
+- Milestone 3, Linux workspace: backend lint / format clean, `python -m pytest` **555
+  passed** (8 new in `tests/test_security_events.py`; migration checks include 0014);
+  frontend `npm run test:ci` **59 passed**, lint clean, `npm run e2e` **13 passed** (axe
+  and phone checks include the new Settings card). In headless Chrome, a wrong then a
+  correct password showed "Failed sign-in - wrong password" and "Signed in" with IP and
+  "Chrome on Linux" under Recent sign-ins.
 - Milestone 2, Linux workspace: backend `ruff check` / `ruff format --check` clean,
   `python -m pytest` **547 passed** (20 new in `tests/test_security_hardening.py`; the
   migration sync and round-trip tests include 0013); frontend lint clean; `npm run e2e`
@@ -454,7 +461,6 @@ Plan, screen-to-endpoint map and unsupported features: `docs/PHASE_8_FRONTEND_PL
   last-write-wins (the Phase 8 UI will always send it).
 - Reconciliation runs on demand (or as scheduled by the operator), up to 500 accounts per
   run, seven fields; conflicts are found when it runs, not instantly.
-- Login, logout and failed logins are not in the audit log (structured logs only) - Phase 9.
 - No retention job for audit, conflict, event or execution history yet.
 - Termination is final; rehiring means creating a new employee record.
 - Free-text employee search is a substring scan within one organization (no trigram index).

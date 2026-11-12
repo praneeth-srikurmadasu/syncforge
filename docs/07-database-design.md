@@ -859,6 +859,23 @@ history the dashboard shows.
 Not organization-scoped (sign-in happens before an organization is chosen). Rows older
 than a day are deleted as new ones are written. Details: docs/15 section 4a.
 
+### `security_events` - sign-in history, append-only (Phase 9)
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| id | bigint identity | no | PK, monotonic |
+| event | varchar(30) | no | CHECK: `login_succeeded`, `login_failed`, `login_rate_limited`, `logout`, `registered`, `registration_rate_limited` |
+| user_id | uuid | yes | The account, when known; no FK (history outlives accounts) |
+| account_hash | char(64) text | yes | SHA-256 of the normalized email, for grouping attempts |
+| reason | varchar(30) | yes | Failure reason or the rate-limit rule |
+| client_ip | varchar(45) | yes | IPv4 or IPv6 |
+| user_agent | varchar(200) | yes | Truncated |
+| request_id | varchar(128) | yes | Links to the logs |
+| created_at | timestamptz | no | default now() |
+
+Indexes: `(user_id, created_at)` for "my activity", `(created_at)` for the platform list.
+Trigger `security_events_append_only` as for `audit_logs`. Not organization-scoped.
+
 ## 4. Migration strategy
 
 - Every schema change is an **Alembic migration** in `backend/migrations/versions/`,

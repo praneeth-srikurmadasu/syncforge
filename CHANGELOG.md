@@ -18,6 +18,11 @@ All notable changes to SyncForge are recorded here.
   name; reported on the `password` field.
 - Request body limit (`MAX_REQUEST_BODY_BYTES`, default 1 MiB): `413 payload_too_large`.
 - Security headers on every response; `Cache-Control: no-store` and a strict CSP on `/api`.
+- Security events (migration 0014): append-only record of registrations, sign-ins,
+  failed sign-ins with reasons, sign-outs and rate-limit refusals (once per window), with
+  user, email hash, IP, user agent and request ID; never passwords or tokens.
+  `GET /api/v1/auth/activity` (own history) and `GET /api/v1/security-events` (Super
+  Admins). "Recent sign-ins" card in Settings.
 
 #### Changed
 - CORS preflight allows `If-Match` and `Idempotency-Key` and exposes `ETag` and

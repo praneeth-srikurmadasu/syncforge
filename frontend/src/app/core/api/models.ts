@@ -15,6 +15,7 @@ export type TokenResponse = S['TokenResponse'];
 export type Me = S['MeResponse'];
 export type MembershipSummary = S['MembershipSummary'];
 export type UserResponse = S['UserResponse'];
+export type OwnSecurityEvent = S['OwnSecurityEventResponse'];
 export type RegisterRequest = S['RegisterRequest'];
 export type OrganizationRole = S['OrganizationRole'];
 export type Organization = S['OrganizationResponse'];

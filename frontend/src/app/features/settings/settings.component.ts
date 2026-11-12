@@ -14,6 +14,7 @@ import { BadgeComponent } from '../../shared/ui/badge.component';
 import { CopyIdComponent } from '../../shared/ui/copy-id.component';
 import { PageHeaderComponent } from '../../shared/ui/page-header.component';
 import { TimeComponent } from '../../shared/ui/time.component';
+import { RecentSignInsComponent } from './recent-sign-ins.component';
 
 @Component({
   selector: 'sf-settings',
@@ -24,6 +25,7 @@ import { TimeComponent } from '../../shared/ui/time.component';
     BadgeComponent,
     CopyIdComponent,
     TimeComponent,
+    RecentSignInsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -121,6 +123,8 @@ import { TimeComponent } from '../../shared/ui/time.component';
           </div>
         </section>
       }
+
+      <sf-recent-sign-ins />
 
       <section class="sf-card">
         <div class="sf-card__header"><h2 class="sf-card__title">Appearance</h2></div>

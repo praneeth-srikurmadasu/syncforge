@@ -87,6 +87,15 @@ class AuthRateLimiter:
         """Count one attempt. Commits, so the count survives a failed request.
 
         Returns None while within the limit, else the seconds until the window ends."""
+        hits, remaining = self.hit_count(rule, subject, now=now)
+        return None if hits <= rule.limit else remaining
+
+    def hit_count(
+        self, rule: Rule, subject: str, *, now: datetime | None = None
+    ) -> tuple[int, float]:
+        """Count one attempt and return (hits in this window, seconds until it ends).
+
+        `hits == rule.limit + 1` is the first refused attempt of the window. Commits."""
         now = now or datetime.now(UTC)
         start, remaining = _window(rule, now)
         hits = self.session.execute(
@@ -100,7 +109,7 @@ class AuthRateLimiter:
         ).scalar_one()
         self.session.execute(delete(AuthRateWindow).where(AuthRateWindow.window_start < now - KEEP))
         self.session.commit()
-        return None if hits <= rule.limit else remaining
+        return hits, remaining
 
     def blocked(self, rule: Rule, subject: str, *, now: datetime | None = None) -> float | None:
         """Without counting: None if another attempt is allowed, else seconds to wait."""

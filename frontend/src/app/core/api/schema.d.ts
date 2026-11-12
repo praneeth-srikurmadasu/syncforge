@@ -4,6 +4,27 @@
  */
 
 export interface paths {
+    "/api/v1/auth/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Activity
+         * @description The caller's own recent sign-ins, failed sign-ins and sign-outs, newest first, so
+         *     people can spot activity they do not recognize.
+         */
+        get: operations["my_activity_api_v1_auth_activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -816,6 +837,26 @@ export interface paths {
          * @description Execution history of this workflow, newest first, with per-step status.
          */
         get: operations["list_executions_api_v1_organizations__organization_id__workflows__workflow_id__executions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/security-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Security Events
+         * @description All security events, newest first, for investigating attacks across accounts.
+         */
+        get: operations["list_security_events_api_v1_security_events_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1942,6 +1983,26 @@ export interface components {
             /** Name */
             name: string;
         };
+        /**
+         * OwnSecurityEventResponse
+         * @description An event in the caller's own history.
+         */
+        OwnSecurityEventResponse: {
+            /** Client Ip */
+            client_ip: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            event: components["schemas"]["SecurityEventType"];
+            /** Id */
+            id: number;
+            /** Reason */
+            reason: string | null;
+            /** User Agent */
+            user_agent: string | null;
+        };
         /** Page[AuditLogResponse] */
         Page_AuditLogResponse_: {
             /** Items */
@@ -2056,6 +2117,17 @@ export interface components {
         Page_OrganizationResponse_: {
             /** Items */
             items: components["schemas"]["OrganizationResponse"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[SecurityEventResponse] */
+        Page_SecurityEventResponse_: {
+            /** Items */
+            items: components["schemas"]["SecurityEventResponse"][];
             /** Limit */
             limit: number;
             /** Offset */
@@ -2220,6 +2292,37 @@ export interface components {
              */
             resolution: "use_syncforge" | "use_external" | "dismiss";
         };
+        /**
+         * SecurityEventResponse
+         * @description An event as Super Admins see it, including events not tied to a known account.
+         */
+        SecurityEventResponse: {
+            /** Account Hash */
+            account_hash: string | null;
+            /** Client Ip */
+            client_ip: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            event: components["schemas"]["SecurityEventType"];
+            /** Id */
+            id: number;
+            /** Reason */
+            reason: string | null;
+            /** Request Id */
+            request_id: string | null;
+            /** User Agent */
+            user_agent: string | null;
+            /** User Id */
+            user_id: string | null;
+        };
+        /**
+         * SecurityEventType
+         * @enum {string}
+         */
+        SecurityEventType: "login_succeeded" | "login_failed" | "login_rate_limited" | "logout" | "registered" | "registration_rate_limited";
         /** StepInput */
         StepInput: {
             /**
@@ -2391,6 +2494,44 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    my_activity_api_v1_auth_activity_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnSecurityEventResponse"][];
+                };
+            };
+            /** @description Missing, invalid, expired or revoked token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     login_api_v1_auth_login_post: {
         parameters: {
             query?: never;
@@ -5244,6 +5385,59 @@ export interface operations {
             };
             /** @description Organization or workflow not found, or caller is not a member */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_security_events_api_v1_security_events_get: {
+        parameters: {
+            query?: {
+                event?: components["schemas"]["SecurityEventType"] | null;
+                user_id?: string | null;
+                client_ip?: string | null;
+                since?: string | null;
+                until?: string | null;
+                /** @description Page size (1-100). */
+                limit?: number;
+                /** @description Number of items to skip. */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_SecurityEventResponse_"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Caller is not a Super Admin */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

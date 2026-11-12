@@ -12,6 +12,8 @@ Phase 8 was the password minimum (12 → 8 characters), made at the owner's requ
 The OpenAPI snapshot lists **53 operations**. The frontend uses **51**: every
 `/api/v1` operation. The two it does not call are `GET /health` and `GET /ready`, which
 are infrastructure probes for load balancers and orchestration, not user features.
+(These counts describe the end of Phase 8. Phase 9 adds `GET /auth/activity`, used by
+Settings, and the Super Admin endpoint `GET /security-events`, which has no screen.)
 
 ## 2. Types generated from the OpenAPI document
 
@@ -59,6 +61,7 @@ Each API area has one injectable service. A method ending in `Request` returns a
 | `register` | `POST /api/v1/auth/register` |
 | `me` | `GET /api/v1/auth/me` |
 | `logout` | `POST /api/v1/auth/logout` |
+| `activityRequest` | `GET /api/v1/auth/activity` (added in Phase 9, "Recent sign-ins" in Settings) |
 
 ### `OrganizationsApi` (`core/api/organizations.api.ts`)
 
