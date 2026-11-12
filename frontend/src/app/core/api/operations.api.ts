@@ -67,6 +67,7 @@ export class EventsApi {
     return { url: orgUrl(orgId, 'events', id) };
   }
 
+  /** Every attempt of every step, oldest first (a plain array, not a page). */
   attemptsRequest(orgId: string, id: string): HttpResourceRequest {
     return { url: orgUrl(orgId, 'events', id, 'attempts') };
   }

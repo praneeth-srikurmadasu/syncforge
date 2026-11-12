@@ -22,6 +22,12 @@ All notable changes to SyncForge are recorded here.
   (changed fields only, `If-Match`, `Idempotency-Key`, recovery from `412`), employee page
   with reporting line, direct reports, sync events, conflicts and change history,
   termination and archiving, departments, reporting-lines tree, top-bar employee search.
+- Connector screens: catalog and list, forms generated from each connector type's JSON
+  schema (create, settings, credential replacement), connection test, manual operation,
+  reconcile, disconnect, and per-connector linked accounts, dead letters, conflicts and
+  history.
+- Event monitor and event page: filters in the URL, optional auto-refresh, timeline,
+  workflow executions with per-step results, and the full attempt history.
 - Password fields: show / hide button (accessible label and pressed state), Caps Lock
   notice, and a length-based strength hint at registration.
 

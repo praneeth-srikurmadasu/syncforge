@@ -9,8 +9,10 @@ import { OrgContextService } from '../../core/org/org-context.service';
 import { todayIso } from '../../core/util/format';
 import { applyServerErrors, controlError } from '../../shared/forms';
 import { DialogFrameComponent } from '../../shared/ui/dialog';
-import { ManagerRefLike } from './employee-form.model';
-import { ManagerPickerComponent } from './manager-picker.component';
+import {
+  EmployeePickerComponent,
+  EmployeeRefLike,
+} from '../../shared/ui/employee-picker.component';
 
 export interface EmployeeFormData {
   mode: 'create' | 'edit';
@@ -43,7 +45,7 @@ const LABELS: Record<Field, string> = {
 /** Create or edit an employee. Edits are sent with If-Match, so a concurrent change is detected. */
 @Component({
   selector: 'sf-employee-form-dialog',
-  imports: [ReactiveFormsModule, DialogFrameComponent, ManagerPickerComponent],
+  imports: [ReactiveFormsModule, DialogFrameComponent, EmployeePickerComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './employee-form.dialog.html',
   styles: `
@@ -90,7 +92,7 @@ export class EmployeeFormDialogComponent {
         'active' | 'on_leave',
     ],
   });
-  protected readonly manager = signal<ManagerRefLike | null>(this.employee?.manager ?? null);
+  protected readonly manager = signal<EmployeeRefLike | null>(this.employee?.manager ?? null);
   protected readonly busy = signal(false);
   protected readonly error = signal<ApiError | null>(null);
   protected readonly extraIssues = signal<string[]>([]);

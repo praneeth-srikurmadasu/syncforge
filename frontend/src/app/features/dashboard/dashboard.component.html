@@ -35,6 +35,7 @@
         [value]="connectors() ? connectedCount() + ' / ' + connectors()!.length : null"
         [error]="!!connectorsError()"
         hint="Connectors with status connected"
+        [link]="['/o', org.orgId(), 'connectors']"
       />
       <sf-metric
         label="Active workflows"
@@ -50,6 +51,7 @@
         [error]="failed(inFlight())"
         [tone]="(value(o?.events?.retrying) ?? 0) > 0 ? 'warning' : 'neutral'"
         [hint]="(value(o?.events?.retrying) ?? 0) + ' waiting to retry'"
+        [link]="['/o', org.orgId(), 'events']"
       />
       <sf-metric
         label="Open dead letters"
@@ -206,7 +208,9 @@
               <li>
                 <sf-status [value]="event.status" />
                 <div class="feed-main">
-                  <span class="feed-title">{{ humanize(event.event_type) }}</span>
+                  <a class="feed-title" [routerLink]="['/o', org.orgId(), 'events', event.id]">{{
+                    humanize(event.event_type)
+                  }}</a>
                   <span class="sf-muted"><sf-employee-name [id]="event.employee_id" /></span>
                 </div>
                 <sf-time class="sf-faint" [value]="event.created_at" />

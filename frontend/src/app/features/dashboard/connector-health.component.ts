@@ -1,4 +1,6 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
+import { RouterLink } from '@angular/router';
+import { OrgContextService } from '../../core/org/org-context.service';
 import { Connector } from '../../core/api/models';
 import { ApiError } from '../../core/api/api-error';
 import { BadgeComponent, StatusBadgeComponent } from '../../shared/ui/badge.component';
@@ -12,6 +14,7 @@ import { TimeComponent } from '../../shared/ui/time.component';
 @Component({
   selector: 'sf-connector-health',
   imports: [
+    RouterLink,
     StatusBadgeComponent,
     BadgeComponent,
     EmptyStateComponent,
@@ -47,7 +50,11 @@ import { TimeComponent } from '../../shared/ui/time.component';
                 <tr>
                   <td>
                     <div class="name">
-                      <span class="sf-cell-primary">{{ c.name }}</span>
+                      <a
+                        class="sf-cell-primary"
+                        [routerLink]="['/o', orgId(), 'connectors', c.id]"
+                        >{{ c.name }}</a
+                      >
                       @if (c.simulated) {
                         <sf-badge
                           tone="info"
@@ -99,6 +106,7 @@ import { TimeComponent } from '../../shared/ui/time.component';
   `,
 })
 export class ConnectorHealthComponent {
+  protected readonly orgId = inject(OrgContextService).orgId;
   readonly connectors = input<Connector[] | null>(null);
   readonly error = input<ApiError | null>(null);
   readonly loading = input(false);

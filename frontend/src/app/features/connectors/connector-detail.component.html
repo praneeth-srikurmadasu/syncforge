@@ -1,0 +1,214 @@
+<div class="sf-page">
+  @if (connector.error(); as err) {
+    <sf-page-header
+      title="Connector"
+      [crumbs]="[
+        { label: 'Connectors', link: ['/o', org.orgId(), 'connectors'] },
+        { label: 'Connector' },
+      ]"
+    />
+    <div class="sf-card"><sf-error-state [error]="err" (retry)="connector.reload()" /></div>
+  } @else if (connector.hasValue()) {
+    @let c = connector.value();
+    <sf-page-header
+      [title]="c.name"
+      [crumbs]="[
+        { label: 'Connectors', link: ['/o', org.orgId(), 'connectors'] },
+        { label: c.name },
+      ]"
+    >
+      <div meta class="meta">
+        <sf-status [value]="c.status" />
+        <span class="sf-muted"
+          >{{ type()?.display_name ?? c.connector_type }} <code>v{{ c.version }}</code></span
+        >
+        @if (c.simulated) {
+          <sf-badge tone="info" title="Talks to a local mock service, not the real product"
+            >Simulated</sf-badge
+          >
+        }
+      </div>
+      @if (org.can('connectors:manage')) {
+        <button
+          type="button"
+          class="sf-btn"
+          (click)="test(c)"
+          [disabled]="testing() || !c.credentials"
+        >
+          <sf-icon name="zap" [size]="14" /> {{ testing() ? 'Testing…' : 'Test connection' }}
+        </button>
+        <button type="button" class="sf-btn" (click)="edit(c, 'settings')" [disabled]="!type()">
+          <sf-icon name="settings" [size]="14" /> Edit settings
+        </button>
+        <button type="button" class="sf-btn" (click)="edit(c, 'credentials')" [disabled]="!type()">
+          <sf-icon name="key" [size]="14" />
+          {{ c.credentials ? 'Replace credentials' : 'Reconnect' }}
+        </button>
+      }
+      @if (org.can('conflicts:resolve') && c.credentials) {
+        <button type="button" class="sf-btn" (click)="reconcile(c)" [disabled]="reconciling()">
+          <sf-icon name="compare" [size]="14" /> {{ reconciling() ? 'Comparing…' : 'Reconcile' }}
+        </button>
+      }
+      @if (org.can('connectors:manage') && c.credentials) {
+        <button type="button" class="sf-btn danger" (click)="disconnect(c)">
+          <sf-icon name="power" [size]="14" /> Disconnect
+        </button>
+      }
+    </sf-page-header>
+
+    @if (testResult(); as t) {
+      <div
+        class="sf-alert"
+        [class.sf-alert--info]="t.ok"
+        [class.sf-alert--danger]="!t.ok"
+        role="status"
+      >
+        <sf-icon [name]="t.ok ? 'circle-check' : 'circle-x'" />
+        <div class="result">
+          <strong>{{ t.ok ? 'Connection works' : 'Connection failed' }}</strong>
+          <span class="sf-muted">
+            @if (t.latency_ms !== null) {
+              Answered in {{ formatDuration(t.latency_ms) }}.
+            }
+            {{ t.detail ?? '' }}
+          </span>
+          @if (testError(t); as err) {
+            <span class="err-line">
+              <sf-badge tone="danger">{{ humanize(err.category) }}</sf-badge>
+              {{ err.message }}
+              @if (err.status_code) {
+                <code class="sf-faint">HTTP {{ err.status_code }}</code>
+              }
+              @if (err.category === 'authentication' || err.category === 'authorization') {
+                <span class="sf-muted">Check the credentials and replace them if needed.</span>
+              }
+            </span>
+            <details>
+              <summary class="sf-faint">Full error</summary>
+              <sf-json [value]="t.error" />
+            </details>
+          }
+        </div>
+        <button
+          type="button"
+          class="sf-btn sf-btn--ghost sf-btn--sm"
+          (click)="testResult.set(null)"
+        >
+          Dismiss
+        </button>
+      </div>
+    }
+
+    @if (reconcileResult(); as r) {
+      <div class="sf-alert sf-alert--info" role="status">
+        <sf-icon name="compare" />
+        <div class="result">
+          <strong>Reconciliation finished</strong>
+          <span class="sf-muted">
+            Checked {{ r.accounts_checked }} linked accounts. New conflicts:
+            {{ r.conflicts_opened }}. Still different: {{ r.conflicts_refreshed }}. Now matching
+            (closed): {{ r.conflicts_closed }}. Resolved automatically: {{ r.auto_resolved }}.
+          </span>
+          @if (r.errors.length) {
+            <span class="err-text">{{ r.errors.length }} accounts could not be read:</span>
+            <sf-json [value]="r.errors" />
+          }
+        </div>
+        <button
+          type="button"
+          class="sf-btn sf-btn--ghost sf-btn--sm"
+          (click)="reconcileResult.set(null)"
+        >
+          Dismiss
+        </button>
+      </div>
+    }
+
+    @if (c.status === 'disconnected') {
+      <div class="sf-alert sf-alert--warning" role="status">
+        Disconnected: no credentials are stored, so workflow steps for this connector fail.
+        @if (org.can('connectors:manage')) {
+          Use Reconnect to save new credentials.
+        }
+      </div>
+    }
+
+    <div class="sf-card">
+      <sf-tabs [tabs]="tabs()" [(active)]="tab" />
+      <div class="panel" role="tabpanel" [attr.aria-labelledby]="'tab-' + tab()">
+        @switch (tab()) {
+          @case ('overview') {
+            <div class="sf-grid sf-grid--2 overview">
+              <section>
+                <h3>Health</h3>
+                <dl class="sf-dl">
+                  <dt>Status</dt>
+                  <dd><sf-status [value]="c.status" /></dd>
+                  <dt>Circuit breaker</dt>
+                  <dd>
+                    <sf-status [value]="c.circuit.state" />
+                    @if (c.circuit.state !== 'closed' && c.circuit.open_until) {
+                      <span class="sf-muted">
+                        until <sf-time [value]="c.circuit.open_until" [absoluteOnly]="true"
+                      /></span>
+                    }
+                  </dd>
+                  <dt>Consecutive failures</dt>
+                  <dd class="sf-num">{{ c.circuit.consecutive_failures }}</dd>
+                  <dt>Last test</dt>
+                  <dd><sf-time [value]="c.last_tested_at" /></dd>
+                  <dt>Last error</dt>
+                  <dd>
+                    @if (c.last_error) {
+                      <sf-badge tone="danger">{{ humanize(c.last_error.category) }}</sf-badge>
+                      <span class="err-msg">{{ c.last_error.message }}</span>
+                    } @else {
+                      -
+                    }
+                  </dd>
+                </dl>
+              </section>
+              <section>
+                <h3>Configuration</h3>
+                <dl class="sf-dl">
+                  @for (e of configEntries(); track e.key) {
+                    <dt>{{ humanize(e.key) }}</dt>
+                    <dd>
+                      <code>{{ e.value }}</code>
+                    </dd>
+                  } @empty {
+                    <dt>Settings</dt>
+                    <dd>Defaults</dd>
+                  }
+                  <dt>Credentials</dt>
+                  <dd>
+                    @if (c.credentials) {
+                      <code>{{ c.credentials.auth_type }}</code>, ending
+                      <code>{{ c.credentials.fingerprint }}</code>, replaced
+                      <sf-time [value]="c.credentials.updated_at" />
+                    } @else {
+                      None stored
+                    }
+                  </dd>
+                  <dt>Created</dt>
+                  <dd><sf-time [value]="c.created_at" [absoluteOnly]="true" /></dd>
+                  <dt>ID</dt>
+                  <dd><sf-id [value]="c.id" [short]="false" /></dd>
+                </dl>
+              </section>
+            </div>
+          }
+          @case ('operation') {
+            <sf-connector-operation [connector]="c" />
+          }
+          @default {
+            <sf-connector-activity [connectorId]="c.id" [kind]="$any(tab())" />
+          }
+        }
+      </div>
+    </div>
+  } @else {
+    <sf-skeleton [rows]="10" />
+  }
+</div>

@@ -11,10 +11,6 @@ export interface Page<T> {
   offset: number;
 }
 
-export interface ItemList<T> {
-  items: T[];
-}
-
 export type TokenResponse = S['TokenResponse'];
 export type Me = S['MeResponse'];
 export type MembershipSummary = S['MembershipSummary'];

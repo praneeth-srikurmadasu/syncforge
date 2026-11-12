@@ -1,0 +1,260 @@
+<div class="sf-page">
+  @if (event.error(); as err) {
+    <sf-page-header
+      title="Event"
+      [crumbs]="[{ label: 'Events', link: ['/o', org.orgId(), 'events'] }, { label: 'Event' }]"
+    />
+    <div class="sf-card"><sf-error-state [error]="err" (retry)="reload()" /></div>
+  } @else if (event.hasValue()) {
+    @let e = event.value();
+    <sf-page-header
+      [title]="humanize(e.event_type)"
+      [crumbs]="[{ label: 'Events', link: ['/o', org.orgId(), 'events'] }, { label: e.event_type }]"
+    >
+      <div meta class="meta">
+        <sf-status [value]="e.status" />
+        <span class="sf-muted">for <sf-employee-name [id]="e.employee_id" /></span>
+        @if (refresh.enabled()) {
+          <sf-badge tone="info">Updating every {{ refresh.seconds }} s</sf-badge>
+        }
+      </div>
+      <button type="button" class="sf-btn" (click)="reload()">
+        <sf-icon name="refresh" [size]="14" /> Refresh
+      </button>
+    </sf-page-header>
+
+    @if (e.status === 'dead_letter') {
+      <div class="sf-alert sf-alert--danger" role="status">
+        <sf-icon name="inbox" />
+        <span>
+          Processing stopped: a step failed after its retries (or with an error that cannot succeed
+          on retry). The event is in the dead-letter queue, where it can be inspected and replayed.
+        </span>
+      </div>
+    } @else if (e.status === 'retrying' && e.next_attempt_at) {
+      <div class="sf-alert sf-alert--warning" role="status">
+        <sf-icon name="clock" />
+        <span>Waiting to retry <sf-time [value]="e.next_attempt_at" [absoluteOnly]="true" />.</span>
+      </div>
+    }
+
+    <div class="sf-grid sf-grid--2">
+      <section class="sf-card">
+        <div class="sf-card__header"><h2 class="sf-card__title">Timeline</h2></div>
+        <ol class="timeline">
+          <li class="done">
+            <span class="dot"></span>
+            <div><strong>Recorded</strong> with the employee change</div>
+            <sf-time [value]="e.created_at" [absoluteOnly]="true" />
+          </li>
+          <li [class.done]="!!e.started_at">
+            <span class="dot"></span>
+            <div><strong>Picked up</strong> by a worker</div>
+            <sf-time [value]="e.started_at" [absoluteOnly]="true" />
+          </li>
+          @if (e.next_attempt_at && !e.completed_at) {
+            <li class="waiting">
+              <span class="dot"></span>
+              <div><strong>Next attempt</strong></div>
+              <sf-time [value]="e.next_attempt_at" [absoluteOnly]="true" />
+            </li>
+          }
+          <li [class.done]="!!e.completed_at" [class.failed]="e.status === 'dead_letter'">
+            <span class="dot"></span>
+            <div>
+              <strong>{{ e.status === 'dead_letter' ? 'Stopped' : 'Completed' }}</strong>
+            </div>
+            <sf-time [value]="e.completed_at" [absoluteOnly]="true" />
+          </li>
+        </ol>
+      </section>
+
+      <section class="sf-card">
+        <div class="sf-card__header"><h2 class="sf-card__title">Details</h2></div>
+        <div class="sf-card__body">
+          <dl class="sf-dl">
+            <dt>Event ID</dt>
+            <dd><sf-id [value]="e.id" [short]="false" /></dd>
+            <dt>Correlation ID</dt>
+            <dd>
+              @if (e.correlation_id) {
+                <sf-id [value]="e.correlation_id" [short]="false" />
+              } @else {
+                -
+              }
+            </dd>
+            <dt>Changed fields</dt>
+            <dd>{{ e.changed_fields.join(', ') || '-' }}</dd>
+            <dt>Processing attempts</dt>
+            <dd class="sf-num">{{ e.attempts }}</dd>
+            <dt>Last error</dt>
+            <dd>{{ e.last_error ?? '-' }}</dd>
+          </dl>
+          <p class="hint sf-faint">
+            The correlation ID is the request ID of the change that recorded this event; search the
+            API and worker logs for it.
+          </p>
+        </div>
+      </section>
+    </div>
+
+    <section class="sf-card">
+      <div class="sf-card__header"><h2 class="sf-card__title">Workflow executions</h2></div>
+      @if (e.executions.length === 0) {
+        <sf-empty-state
+          icon="workflow"
+          [title]="isFinal() ? 'No workflow ran for this event' : 'Not processed yet'"
+          [message]="
+            isFinal()
+              ? 'No active workflow had this trigger when the event was processed.'
+              : 'A worker has not picked up the event yet.'
+          "
+        />
+      } @else {
+        @for (x of e.executions; track x.id) {
+          <div class="execution">
+            <div class="exec-head">
+              <span class="sf-cell-primary">{{ x.workflow_name }}</span>
+              <code class="sf-faint">v{{ x.workflow_version }}</code>
+              <sf-status [value]="x.status" />
+              <span class="sf-spacer"></span>
+              <span class="sf-faint small">
+                <sf-time [value]="x.started_at" /> to <sf-time [value]="x.finished_at" />
+              </span>
+            </div>
+            <div class="sf-table-wrap">
+              <table class="sf-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Step</th>
+                    <th scope="col">Connector</th>
+                    <th scope="col">Operation</th>
+                    <th scope="col">Status</th>
+                    <th scope="col" class="sf-cell-num">Attempts</th>
+                    <th scope="col">Account ID</th>
+                    <th scope="col">Error</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (j of x.jobs; track j.position) {
+                    <tr>
+                      <td class="sf-num">{{ j.position }}</td>
+                      <td>
+                        <a [routerLink]="['/o', org.orgId(), 'connectors', j.connector_id]">{{
+                          connectorName(j.connector_id)
+                        }}</a>
+                      </td>
+                      <td>
+                        <code>{{ j.operation }}</code>
+                      </td>
+                      <td><sf-status [value]="j.status" /></td>
+                      <td class="sf-cell-num">{{ j.attempts }}</td>
+                      <td>
+                        @if (j.external_id) {
+                          <code>{{ j.external_id }}</code>
+                        } @else {
+                          <span class="sf-faint">-</span>
+                        }
+                      </td>
+                      <td>
+                        @if (j.error_category) {
+                          <sf-badge tone="danger">{{ humanize(j.error_category) }}</sf-badge>
+                          <span class="err-msg">{{ j.error_message }}</span>
+                        } @else if (j.next_attempt_at) {
+                          <span class="warn">retry <sf-time [value]="j.next_attempt_at" /></span>
+                        } @else {
+                          <span class="sf-faint">-</span>
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+        }
+      }
+    </section>
+
+    <section class="sf-card">
+      <div class="sf-card__header">
+        <h2 class="sf-card__title">Attempts</h2>
+        <span class="sf-faint small">Every call to an application, oldest first</span>
+      </div>
+      @if (attempts.error(); as err) {
+        <sf-error-state [error]="err" (retry)="attempts.reload()" />
+      } @else if (attempts.value(); as list) {
+        @if (list.length === 0) {
+          <sf-empty-state icon="clock" title="No attempts yet" />
+        } @else {
+          <div class="sf-table-wrap">
+            <table class="sf-table">
+              <thead>
+                <tr>
+                  <th scope="col" class="sf-cell-num">#</th>
+                  <th scope="col">Step</th>
+                  <th scope="col">Outcome</th>
+                  <th scope="col">HTTP</th>
+                  <th scope="col">Error</th>
+                  <th scope="col" class="sf-cell-num">Duration</th>
+                  <th scope="col">Retry</th>
+                  <th scope="col">Started</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (a of list; track a.job_id + '-' + a.attempt_number) {
+                  <tr>
+                    <td class="sf-cell-num">{{ a.attempt_number }}</td>
+                    <td>
+                      {{ a.position }}. <code>{{ a.operation }}</code>
+                      <span class="sf-faint on">on {{ connectorName(a.connector_id) }}</span>
+                    </td>
+                    <td>
+                      @if (a.outcome) {
+                        <sf-status [value]="a.outcome" />
+                      } @else {
+                        <sf-status value="running" />
+                      }
+                    </td>
+                    <td>
+                      <code>{{ a.http_status ?? '-' }}</code>
+                    </td>
+                    <td>
+                      @if (a.error_category) {
+                        {{ humanize(a.error_category) }}
+                        @if (a.error_code) {
+                          <code class="sf-faint">{{ a.error_code }}</code>
+                        }
+                        <span class="err-msg">{{ a.error_message }}</span>
+                      } @else {
+                        <span class="sf-faint">-</span>
+                      }
+                    </td>
+                    <td class="sf-cell-num">{{ formatDuration(a.duration_ms) }}</td>
+                    <td>
+                      @if (a.retryable === false) {
+                        <span class="sf-faint">not retryable</span>
+                      } @else if (a.next_attempt_at) {
+                        <sf-time [value]="a.next_attempt_at" />
+                        @if (a.retry_after_seconds) {
+                          <span class="sf-faint">(Retry-After {{ a.retry_after_seconds }} s)</span>
+                        }
+                      } @else {
+                        <span class="sf-faint">-</span>
+                      }
+                    </td>
+                    <td><sf-time [value]="a.started_at" [absoluteOnly]="true" /></td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      } @else {
+        <sf-skeleton [rows]="4" />
+      }
+    </section>
+  } @else {
+    <sf-skeleton [rows]="10" />
+  }
+</div>

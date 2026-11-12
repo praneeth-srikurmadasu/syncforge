@@ -10,17 +10,22 @@ import {
 import { Subject, debounceTime, distinctUntilChanged, switchMap, catchError, of, map } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ApiError } from '../../core/api/api-error';
-import { ManagerRefLike } from './employee-form.model';
 import { EmployeesApi } from '../../core/api/workforce.api';
 import { OrgContextService } from '../../core/org/org-context.service';
-import { IconComponent } from '../../shared/ui/icon.component';
+import { IconComponent } from './icon.component';
+
+export interface EmployeeRefLike {
+  id: string;
+  full_name: string;
+  employee_number: string;
+}
 
 /**
- * Chooses a manager by searching employees (name, email or number). Terminated people and
- * the employee being edited are not offered: the API would refuse them.
+ * Chooses an employee by searching (name, email or number). As a manager picker it leaves
+ * out terminated people and the employee being edited, which the API would refuse.
  */
 @Component({
-  selector: 'sf-manager-picker',
+  selector: 'sf-employee-picker',
   imports: [IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -60,7 +65,7 @@ import { IconComponent } from '../../shared/ui/icon.component';
           }
         </ul>
       } @else if (searched() && !error()) {
-        <span class="sf-field__hint">No matching employee who can be a manager.</span>
+        <span class="sf-field__hint">{{ emptyText() }}</span>
       }
     }
   `,
@@ -111,16 +116,18 @@ import { IconComponent } from '../../shared/ui/icon.component';
     }
   `,
 })
-export class ManagerPickerComponent {
+export class EmployeePickerComponent {
   private readonly api = inject(EmployeesApi);
   private readonly org = inject(OrgContextService);
 
-  readonly value = model<ManagerRefLike | null>(null);
+  readonly value = model<EmployeeRefLike | null>(null);
   readonly excludeId = input<string | null>(null);
+  readonly includeTerminated = input(false);
+  readonly emptyText = input('No matching employee who can be a manager.');
   readonly inputId = input('manager');
 
   protected readonly terms = new Subject<string>();
-  protected readonly results = signal<ManagerRefLike[]>([]);
+  protected readonly results = signal<EmployeeRefLike[]>([]);
   protected readonly searched = signal(false);
   protected readonly error = signal<string | null>(null);
 
@@ -152,13 +159,17 @@ export class ManagerPickerComponent {
         this.searched.set(true);
         this.results.set(
           items
-            .filter((e) => e.employment_status !== 'terminated' && e.id !== this.excludeId())
+            .filter(
+              (e) =>
+                (this.includeTerminated() || e.employment_status !== 'terminated') &&
+                e.id !== this.excludeId(),
+            )
             .map((e) => ({ id: e.id, full_name: e.full_name, employee_number: e.employee_number })),
         );
       });
   }
 
-  protected choose(ref: ManagerRefLike): void {
+  protected choose(ref: EmployeeRefLike): void {
     this.value.set(ref);
     this.results.set([]);
     this.searched.set(false);

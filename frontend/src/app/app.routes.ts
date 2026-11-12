@@ -99,6 +99,42 @@ export const routes: Routes = [
           import('./features/reporting/reporting.component').then((m) => m.ReportingComponent),
       },
       {
+        path: 'connectors',
+        title: 'Connectors · SyncForge',
+        canActivate: [permissionGuard],
+        data: { permission: 'connectors:read' },
+        loadComponent: () =>
+          import('./features/connectors/connectors-list.component').then(
+            (m) => m.ConnectorsListComponent,
+          ),
+      },
+      {
+        path: 'connectors/:id',
+        title: 'Connector · SyncForge',
+        canActivate: [permissionGuard],
+        data: { permission: 'connectors:read' },
+        loadComponent: () =>
+          import('./features/connectors/connector-detail.component').then(
+            (m) => m.ConnectorDetailComponent,
+          ),
+      },
+      {
+        path: 'events',
+        title: 'Events · SyncForge',
+        canActivate: [permissionGuard],
+        data: { permission: 'events:read' },
+        loadComponent: () =>
+          import('./features/events/events-list.component').then((m) => m.EventsListComponent),
+      },
+      {
+        path: 'events/:id',
+        title: 'Event · SyncForge',
+        canActivate: [permissionGuard],
+        data: { permission: 'events:read' },
+        loadComponent: () =>
+          import('./features/events/event-detail.component').then((m) => m.EventDetailComponent),
+      },
+      {
         path: 'forbidden',
         title: 'Not permitted · SyncForge',
         loadComponent: () =>

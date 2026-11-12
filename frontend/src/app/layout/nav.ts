@@ -37,4 +37,11 @@ export const NAV: NavGroup[] = [
       },
     ],
   },
+  {
+    label: 'Integrations',
+    items: [
+      { label: 'Connectors', path: 'connectors', icon: 'plug', permission: 'connectors:read' },
+      { label: 'Events', path: 'events', icon: 'activity', permission: 'events:read' },
+    ],
+  },
 ];

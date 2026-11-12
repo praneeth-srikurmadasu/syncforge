@@ -22,8 +22,13 @@ import {
 export class ConnectorsApi {
   private readonly http = inject(HttpClient);
 
+  /** The catalog of connector types (a plain array, not a page). */
   typesRequest(): HttpResourceRequest {
     return { url: `${API_BASE}/connector-types` };
+  }
+
+  get(orgId: string, id: string): Observable<Connector> {
+    return this.http.get<Connector>(orgUrl(orgId, 'connectors', id));
   }
 
   listRequest(orgId: string, page: PageQuery = { limit: 100 }): HttpResourceRequest {

@@ -1,0 +1,128 @@
+<div class="sf-page">
+  <sf-page-header
+    title="Connectors"
+    description="Applications SyncForge provisions accounts in. Workflows choose which connectors each lifecycle event reaches."
+  />
+
+  <section aria-labelledby="catalog-title">
+    <h2 id="catalog-title" class="section-title">Available applications</h2>
+    @if (types.error(); as err) {
+      <div class="sf-card"><sf-error-state [error]="err" (retry)="types.reload()" /></div>
+    } @else if (types.value(); as list) {
+      <div class="catalog">
+        @for (t of list; track t.connector_type) {
+          <article class="sf-card type">
+            <header>
+              <h3>{{ t.display_name }}</h3>
+              @if (t.simulated) {
+                <sf-badge tone="info" title="Runs against a local mock service in this environment"
+                  >Simulated</sf-badge
+                >
+              } @else {
+                <sf-badge tone="success">Live API</sf-badge>
+              }
+            </header>
+            <p class="sf-muted desc">{{ t.description }}</p>
+            <dl class="facts">
+              <dt>Version</dt>
+              <dd>
+                <code>{{ t.version }}</code>
+              </dd>
+              <dt>Sign-in</dt>
+              <dd>
+                <code>{{ t.auth_type }}</code>
+              </dd>
+              <dt>Operations</dt>
+              <dd>{{ t.operations.length }}</dd>
+            </dl>
+            <footer>
+              <span class="sf-faint count">
+                @if (countByType().get(t.connector_type); as n) {
+                  {{ n }} configured
+                } @else {
+                  Not configured
+                }
+              </span>
+              @if (org.can('connectors:manage')) {
+                <button type="button" class="sf-btn sf-btn--sm" (click)="connect(t)">
+                  <sf-icon name="plus" [size]="13" /> Connect
+                </button>
+              }
+            </footer>
+          </article>
+        }
+      </div>
+    } @else {
+      <sf-skeleton [rows]="3" [height]="40" />
+    }
+  </section>
+
+  <section class="sf-card" aria-labelledby="configured-title">
+    <div class="sf-card__header">
+      <h2 id="configured-title" class="sf-card__title">Configured connectors</h2>
+    </div>
+    @if (connectors.error(); as err) {
+      <sf-error-state [error]="err" (retry)="connectors.reload()" />
+    } @else if (connectors.value(); as page) {
+      @if (page.items.length === 0) {
+        <sf-empty-state
+          icon="plug"
+          title="No connectors yet"
+          message="Connect an application above, then add it to a workflow."
+        />
+      } @else {
+        <div class="sf-table-wrap">
+          <table class="sf-table">
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Application</th>
+                <th scope="col">Status</th>
+                <th scope="col">Circuit</th>
+                <th scope="col">Credentials</th>
+                <th scope="col">Last test</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (c of page.items; track c.id) {
+                <tr class="sf-row-link" (click)="open(c)">
+                  <td>
+                    <a
+                      class="sf-cell-primary"
+                      [routerLink]="['/o', org.orgId(), 'connectors', c.id]"
+                      (click)="$event.stopPropagation()"
+                      >{{ c.name }}</a
+                    >
+                    @if (c.last_error) {
+                      <span class="err" [attr.title]="c.last_error.message">{{
+                        c.last_error.category
+                      }}</span>
+                    }
+                  </td>
+                  <td>
+                    {{ typeNames().get(c.connector_type) ?? c.connector_type }}
+                    @if (c.simulated) {
+                      <sf-badge tone="info">Simulated</sf-badge>
+                    }
+                  </td>
+                  <td><sf-status [value]="c.status" /></td>
+                  <td><sf-status [value]="c.circuit.state" /></td>
+                  <td>
+                    @if (c.credentials) {
+                      <code class="sf-muted">{{ c.credentials.fingerprint }}</code>
+                    } @else {
+                      <span class="sf-faint">None</span>
+                    }
+                  </td>
+                  <td><sf-time [value]="c.last_tested_at" /></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    } @else {
+      <sf-skeleton [rows]="4" />
+    }
+  </section>
+</div>

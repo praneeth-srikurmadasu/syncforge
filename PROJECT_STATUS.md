@@ -1,6 +1,6 @@
 # SyncForge - Project Status
 
-**Current phase:** 8 in progress - Angular frontend. Milestones 1-5 delivered (1-4 verified on Windows); 6-10 next.
+**Current phase:** 8 in progress - Angular frontend. Milestones 1-6 delivered (1-5 verified on Windows, commit `42fe0cc`); 7-10 next.
 **Last updated:** 2026-11-12
 
 | Phase | Status |
@@ -12,7 +12,7 @@
 | 5 - Workflow engine and event processing | Complete |
 | 6 - Reliability engine and failure recovery | Complete |
 | 7 - Data integrity, conflicts, audit logging | Complete |
-| 8 - Angular frontend | In progress (milestones 1-5 of 10 delivered) |
+| 8 - Angular frontend | In progress (milestones 1-6 of 10 delivered) |
 | 9-10 | Not started |
 
 ## Phase 8 progress
@@ -27,7 +27,8 @@ Plan, screen-to-endpoint map and unsupported features: `docs/PHASE_8_FRONTEND_PL
 | 4 | Dashboard from real endpoints only: totals via `limit=1`, 7-day workflow outcomes and retries from audit-log windows, event pipeline, connector health, recent events and audit activity, departments, conflicts by severity; per-figure error display | Done |
 | 5 | Workforce: employee directory (search, department, status, location, joining-date range, archived, sort, pagination; filters in the URL), add / edit dialog (changed fields only, `If-Match`, `Idempotency-Key`, 412 recovery, manager search), employee page (reporting line, direct reports, sync events, conflicts, change history), terminate (typed confirmation) and archive, departments (add, rename, delete when empty), reporting lines tree, top-bar employee search | Done |
 | 5a | Owner-requested changes: password minimum 8 (backend, CLI, docs, tests), show / hide password toggle, Caps Lock notice, strength hint, clear message when the API is not running | Done |
-| 6-10 | Integrations and events, workflows and reliability, data integrity and governance, QA, documentation | Next |
+| 6 | Integrations and events: connector catalog and list; create / edit settings / replace credentials from each type's JSON schema (no per-connector UI code); connection test with the normalized error; manual operation for one employee; reconcile summary; disconnect with typed confirmation; linked accounts, dead letters, conflicts and history per connector; event monitor (status, type, employee filters, optional 5 s refresh) and event page (timeline, workflow executions with per-step results, every attempt with HTTP status, error, duration and retry time; refreshes itself until the event settles) | Done |
+| 7-10 | Workflows and reliability, data integrity and governance, QA, documentation | Next |
 
 ### Phase 8 verification so far (actual results)
 
@@ -51,6 +52,19 @@ Plan, screen-to-endpoint map and unsupported features: `docs/PHASE_8_FRONTEND_PL
   clean, `npm run api:check` after regenerating the OpenAPI snapshot. Browser: with the
   API stopped, sign-in showed "The SyncForge API is not responding..."; with it running, a
   new account registered with `abcd1234`, the toggle switched the field to plain text.
+
+- Windows, milestone 5 + 5a (commit `42fe0cc`): backend ruff clean, **527 passed**;
+  frontend build, **44 passed**, lint and format clean; pushed and checked file by file
+  against GitHub (321 tracked files).
+- Milestone 6, Linux workspace: build success; `npm run test:ci` **51 passed** (14 files);
+  lint and format clean. Headless Chrome against the running stack and mock services: a
+  Slack connector created with the mock's test token, connection test passed; settings
+  saved (`rate_limit_per_minute: 30`); credentials replaced with a wrong token, the next
+  test failed with `authentication` / HTTP 401, credentials replaced again; manual
+  `create_user` created the account (shown under linked accounts); a repeat run for the
+  same person got the mock's `user_already_exists`, shown as an error; reconcile summary;
+  disconnect deleted the credentials; event filters in the URL; an event page showed one
+  execution with three steps and their account IDs.
 
 #### Milestones 1-4, Linux workspace (Node 22.23.4)
 

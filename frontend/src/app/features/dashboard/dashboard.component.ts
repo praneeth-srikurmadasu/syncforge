@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
+import { RouterLink } from '@angular/router';
 import { ApiError } from '../../core/api/api-error';
 import { AuditApi, EventsApi } from '../../core/api/operations.api';
 import { OrgContextService } from '../../core/org/org-context.service';
@@ -22,6 +23,7 @@ import { Count, DashboardData, EVENT_STATUSES } from './dashboard-data';
 @Component({
   selector: 'sf-dashboard',
   imports: [
+    RouterLink,
     PageHeaderComponent,
     MetricCardComponent,
     BarChartComponent,
