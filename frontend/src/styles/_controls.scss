@@ -43,12 +43,12 @@
 
   &--danger {
     border-color: transparent;
-    background: var(--sf-danger);
+    background: var(--sf-danger-solid);
     color: #fff;
 
     &:hover:not(:disabled) {
-      background: var(--sf-danger);
-      filter: brightness(1.08);
+      background: var(--sf-danger-solid);
+      filter: brightness(0.92);
     }
   }
 

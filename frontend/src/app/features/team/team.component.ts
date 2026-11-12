@@ -104,65 +104,67 @@ const ROLE_DESCRIPTIONS: Record<OrganizationRole, string> = {
           @if (page.items.length === 0) {
             <sf-empty-state icon="users" title="No members" />
           } @else {
-            <table class="sf-table">
-              <thead>
-                <tr>
-                  <th scope="col">Name</th>
-                  <th scope="col">Role</th>
-                  <th scope="col">Joined</th>
-                  @if (canManage()) {
-                    <th scope="col"><span class="sf-visually-hidden">Actions</span></th>
-                  }
-                </tr>
-              </thead>
-              <tbody>
-                @for (m of page.items; track m.user_id) {
+            <div class="sf-table-wrap">
+              <table class="sf-table">
+                <thead>
                   <tr>
-                    <td>
-                      <span class="sf-cell-primary">{{ m.full_name }}</span>
-                      @if (m.user_id === myId()) {
-                        <sf-badge tone="accent">You</sf-badge>
-                      }
-                      <span class="sf-faint email">{{ m.email }}</span>
-                    </td>
-                    <td>
-                      @if (canManage()) {
-                        <label class="sf-visually-hidden" [for]="'role-' + m.user_id"
-                          >Role for {{ m.full_name }}</label
-                        >
-                        <select
-                          [id]="'role-' + m.user_id"
-                          class="sf-select role-select"
-                          [value]="m.role"
-                          (change)="changeRole(m, $any($event.target))"
-                        >
-                          @for (r of roles; track r) {
-                            <option [value]="r" [selected]="r === m.role">
-                              {{ roleLabels[r] }}
-                            </option>
-                          }
-                        </select>
-                      } @else {
-                        {{ roleLabels[m.role] }}
-                      }
-                    </td>
-                    <td><sf-time [value]="m.joined_at" /></td>
+                    <th scope="col">Name</th>
+                    <th scope="col">Role</th>
+                    <th scope="col">Joined</th>
                     @if (canManage()) {
-                      <td class="actions">
-                        <button
-                          type="button"
-                          class="sf-btn sf-btn--ghost sf-btn--sm"
-                          (click)="remove(m)"
-                          [attr.aria-label]="'Remove ' + m.full_name"
-                        >
-                          <sf-icon name="user-minus" [size]="13" /> Remove
-                        </button>
-                      </td>
+                      <th scope="col"><span class="sf-visually-hidden">Actions</span></th>
                     }
                   </tr>
-                }
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  @for (m of page.items; track m.user_id) {
+                    <tr>
+                      <td>
+                        <span class="sf-cell-primary">{{ m.full_name }}</span>
+                        @if (m.user_id === myId()) {
+                          <sf-badge tone="accent">You</sf-badge>
+                        }
+                        <span class="sf-faint email">{{ m.email }}</span>
+                      </td>
+                      <td>
+                        @if (canManage()) {
+                          <label class="sf-visually-hidden" [for]="'role-' + m.user_id"
+                            >Role for {{ m.full_name }}</label
+                          >
+                          <select
+                            [id]="'role-' + m.user_id"
+                            class="sf-select role-select"
+                            [value]="m.role"
+                            (change)="changeRole(m, $any($event.target))"
+                          >
+                            @for (r of roles; track r) {
+                              <option [value]="r" [selected]="r === m.role">
+                                {{ roleLabels[r] }}
+                              </option>
+                            }
+                          </select>
+                        } @else {
+                          {{ roleLabels[m.role] }}
+                        }
+                      </td>
+                      <td><sf-time [value]="m.joined_at" /></td>
+                      @if (canManage()) {
+                        <td class="actions">
+                          <button
+                            type="button"
+                            class="sf-btn sf-btn--ghost sf-btn--sm"
+                            (click)="remove(m)"
+                            [attr.aria-label]="'Remove ' + m.full_name"
+                          >
+                            <sf-icon name="user-minus" [size]="13" /> Remove
+                          </button>
+                        </td>
+                      }
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
             <sf-pagination
               [total]="page.total"
               [limit]="page.limit"

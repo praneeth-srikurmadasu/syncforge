@@ -37,8 +37,16 @@ All notable changes to SyncForge are recorded here.
   in the browser; on narrow screens the sidebar stays a slide-in drawer.
 - Password fields: show / hide button (accessible label and pressed state), Caps Lock
   notice, and a length-based strength hint at registration.
+- Browser test suite (`frontend/e2e/`, Playwright 1.65.0, `npm run e2e`): 13 tests against
+  the real API, worker, relay and mock services, each on a freshly provisioned tenant, plus
+  axe accessibility checks (14 pages, both themes) and a 390 px phone layout check.
+  Results in `docs/PHASE_8_FRONTEND_TESTING.md`.
 
 #### Changed
+- Colour tokens raised to WCAG AA contrast in both themes; danger buttons use a new solid
+  danger colour.
+- Every data table scrolls inside its own container, so pages fit a 390 px phone screen.
+- The "Main navigation" label moved from the sidebar `<aside>` to its `<nav>`.
 - Minimum password length lowered from 12 to 8 characters (backend `PASSWORD_MIN_LENGTH`,
   the `create-superadmin` prompt, the registration form, docs/08 and docs/15), at the
   project owner's request. No composition rules; 128-character maximum unchanged.

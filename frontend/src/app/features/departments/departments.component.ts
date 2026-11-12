@@ -72,88 +72,90 @@ import { TimeComponent } from '../../shared/ui/time.component';
               message="Add one above, then assign employees to it."
             />
           } @else {
-            <table class="sf-table">
-              <thead>
-                <tr>
-                  <th scope="col">Name</th>
-                  <th scope="col" class="sf-cell-num">Employees</th>
-                  <th scope="col">Created</th>
-                  @if (org.can('departments:manage')) {
-                    <th scope="col"><span class="sf-visually-hidden">Actions</span></th>
-                  }
-                </tr>
-              </thead>
-              <tbody>
-                @for (d of page.items; track d.id) {
+            <div class="sf-table-wrap">
+              <table class="sf-table">
+                <thead>
                   <tr>
-                    <td>
-                      @if (editing() === d.id) {
-                        <form class="rename" (submit)="$event.preventDefault(); saveRename(d)">
-                          <label class="sf-visually-hidden" [for]="'rename-' + d.id"
-                            >Department name</label
-                          >
-                          <input
-                            [id]="'rename-' + d.id"
-                            class="sf-input"
-                            [formControl]="renameControl"
-                          />
+                    <th scope="col">Name</th>
+                    <th scope="col" class="sf-cell-num">Employees</th>
+                    <th scope="col">Created</th>
+                    @if (org.can('departments:manage')) {
+                      <th scope="col"><span class="sf-visually-hidden">Actions</span></th>
+                    }
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (d of page.items; track d.id) {
+                    <tr>
+                      <td>
+                        @if (editing() === d.id) {
+                          <form class="rename" (submit)="$event.preventDefault(); saveRename(d)">
+                            <label class="sf-visually-hidden" [for]="'rename-' + d.id"
+                              >Department name</label
+                            >
+                            <input
+                              [id]="'rename-' + d.id"
+                              class="sf-input"
+                              [formControl]="renameControl"
+                            />
+                            <button
+                              type="submit"
+                              class="sf-btn sf-btn--sm sf-btn--primary"
+                              [disabled]="busy() || renameControl.invalid"
+                            >
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              class="sf-btn sf-btn--sm"
+                              (click)="editing.set(null)"
+                            >
+                              Cancel
+                            </button>
+                          </form>
+                        } @else {
+                          <span class="sf-cell-primary">{{ d.name }}</span>
+                        }
+                      </td>
+                      <td class="sf-cell-num">
+                        <a
+                          [routerLink]="['/o', org.orgId(), 'employees']"
+                          [queryParams]="{ department: d.id }"
+                          >{{ d.employee_count }}</a
+                        >
+                      </td>
+                      <td><sf-time [value]="d.created_at" /></td>
+                      @if (org.can('departments:manage')) {
+                        <td class="actions">
                           <button
-                            type="submit"
-                            class="sf-btn sf-btn--sm sf-btn--primary"
-                            [disabled]="busy() || renameControl.invalid"
+                            type="button"
+                            class="sf-btn sf-btn--ghost sf-btn--sm"
+                            (click)="startRename(d)"
+                            [attr.aria-label]="'Rename ' + d.name"
                           >
-                            Save
+                            <sf-icon name="pencil" [size]="13" /> Rename
                           </button>
                           <button
                             type="button"
-                            class="sf-btn sf-btn--sm"
-                            (click)="editing.set(null)"
+                            class="sf-btn sf-btn--ghost sf-btn--sm"
+                            (click)="remove(d)"
+                            [disabled]="d.employee_count > 0"
+                            [attr.title]="
+                              d.employee_count > 0
+                                ? 'Move its employees to another department first'
+                                : null
+                            "
+                            [attr.aria-label]="'Delete ' + d.name"
                           >
-                            Cancel
+                            <sf-icon name="trash" [size]="13" /> Delete
                           </button>
-                        </form>
-                      } @else {
-                        <span class="sf-cell-primary">{{ d.name }}</span>
+                        </td>
                       }
-                    </td>
-                    <td class="sf-cell-num">
-                      <a
-                        [routerLink]="['/o', org.orgId(), 'employees']"
-                        [queryParams]="{ department: d.id }"
-                        >{{ d.employee_count }}</a
-                      >
-                    </td>
-                    <td><sf-time [value]="d.created_at" /></td>
-                    @if (org.can('departments:manage')) {
-                      <td class="actions">
-                        <button
-                          type="button"
-                          class="sf-btn sf-btn--ghost sf-btn--sm"
-                          (click)="startRename(d)"
-                          [attr.aria-label]="'Rename ' + d.name"
-                        >
-                          <sf-icon name="pencil" [size]="13" /> Rename
-                        </button>
-                        <button
-                          type="button"
-                          class="sf-btn sf-btn--ghost sf-btn--sm"
-                          (click)="remove(d)"
-                          [disabled]="d.employee_count > 0"
-                          [attr.title]="
-                            d.employee_count > 0
-                              ? 'Move its employees to another department first'
-                              : null
-                          "
-                          [attr.aria-label]="'Delete ' + d.name"
-                        >
-                          <sf-icon name="trash" [size]="13" /> Delete
-                        </button>
-                      </td>
-                    }
-                  </tr>
-                }
-              </tbody>
-            </table>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
           }
         } @else {
           <sf-skeleton [rows]="5" />
@@ -165,6 +167,7 @@ import { TimeComponent } from '../../shared/ui/time.component';
     .add {
       display: flex;
       align-items: flex-end;
+      flex-wrap: wrap;
       gap: var(--sf-space-3);
       padding: var(--sf-space-4);
     }

@@ -32,6 +32,37 @@ npm run format:check      # Prettier
 npm run api:check         # API types still match openapi/openapi.json
 ```
 
+## Browser tests (Playwright)
+
+The suite in `e2e/` drives the real application in Chromium against the real
+API, worker, outbox relay and mock services. It creates its own users and
+organizations through the API, so it never touches your existing data.
+
+One-time setup:
+
+```powershell
+npx playwright install chromium
+```
+
+Start all five processes first (Postgres and Redis in Docker, the mock
+services, the API, the worker, the relay) and `npm start`, then:
+
+```powershell
+npm run e2e          # 13 tests, about 3 minutes
+npm run e2e:report   # open the HTML report of the last run
+```
+
+Environment variables, all optional: `SF_WEB` (default `http://localhost:4200`),
+`SF_API` (default `http://127.0.0.1:8000/api/v1`), `SF_CHROME` (path to a
+Chrome binary to use instead of Playwright's Chromium).
+
+What is covered: sign-up and sign-in, organization isolation, employee
+lifecycle with a concurrent edit, connecting and testing connectors, building
+and activating a workflow, a hire provisioned end to end, a dead letter
+replayed to completion, a conflict reconciled and resolved, viewer RBAC,
+automated accessibility checks (axe, WCAG 2 A/AA) on 14 pages in both themes,
+and a 390 px phone layout check on the same pages.
+
 ## API types
 
 `src/app/core/api/schema.d.ts` is generated from the backend's OpenAPI document and must not

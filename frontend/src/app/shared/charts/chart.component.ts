@@ -44,31 +44,33 @@ const TONE_TOKENS: Record<ChartTone, string> = {
       role="img"
       [attr.aria-label]="summary()"
     ></div>
-    <table class="sf-visually-hidden">
-      <caption>
-        {{
-          summary()
-        }}
-      </caption>
-      <thead>
-        <tr>
-          <th scope="col">{{ categoryLabel() }}</th>
-          @for (s of series(); track s.name) {
-            <th scope="col">{{ s.name }}</th>
-          }
-        </tr>
-      </thead>
-      <tbody>
-        @for (c of categories(); track $index; let i = $index) {
+    <div class="sf-visually-hidden">
+      <table>
+        <caption>
+          {{
+            summary()
+          }}
+        </caption>
+        <thead>
           <tr>
-            <th scope="row">{{ c }}</th>
+            <th scope="col">{{ categoryLabel() }}</th>
             @for (s of series(); track s.name) {
-              <td>{{ s.values[i] }}</td>
+              <th scope="col">{{ s.name }}</th>
             }
           </tr>
-        }
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          @for (c of categories(); track $index; let i = $index) {
+            <tr>
+              <th scope="row">{{ c }}</th>
+              @for (s of series(); track s.name) {
+                <td>{{ s.values[i] }}</td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
   `,
   styles: `
     :host {

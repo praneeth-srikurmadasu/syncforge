@@ -91,53 +91,55 @@ import { TimeComponent } from '../../shared/ui/time.component';
               }
             </sf-empty-state>
           } @else {
-            <table class="sf-table">
-              <thead>
-                <tr>
-                  <th scope="col">Name</th>
-                  <th scope="col">Trigger</th>
-                  <th scope="col">Steps</th>
-                  <th scope="col">State</th>
-                  <th scope="col" class="sf-cell-num">Version</th>
-                  <th scope="col">Updated</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (w of page.items; track w.id) {
-                  <tr class="sf-row-link" (click)="open(w)">
-                    <td>
-                      <a
-                        class="sf-cell-primary"
-                        [routerLink]="['/o', org.orgId(), 'workflows', w.id]"
-                        (click)="$event.stopPropagation()"
-                        >{{ w.name }}</a
-                      >
-                      @if (w.description) {
-                        <span class="sf-faint desc">{{ w.description }}</span>
-                      }
-                    </td>
-                    <td>
-                      <code>{{ w.trigger_event_type }}</code>
-                    </td>
-                    <td class="steps">
-                      @for (s of w.steps; track s.position) {
-                        <span class="sf-muted"
-                          >{{ s.connector_name
-                          }}<code class="sf-faint">.{{ s.operation }}</code></span
-                        >
-                      }
-                    </td>
-                    <td>
-                      <sf-badge [tone]="w.is_active ? 'success' : 'neutral'" [dot]="true">{{
-                        w.is_active ? 'Active' : 'Inactive'
-                      }}</sf-badge>
-                    </td>
-                    <td class="sf-cell-num">{{ w.version }}</td>
-                    <td><sf-time [value]="w.updated_at" /></td>
+            <div class="sf-table-wrap">
+              <table class="sf-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col">Trigger</th>
+                    <th scope="col">Steps</th>
+                    <th scope="col">State</th>
+                    <th scope="col" class="sf-cell-num">Version</th>
+                    <th scope="col">Updated</th>
                   </tr>
-                }
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  @for (w of page.items; track w.id) {
+                    <tr class="sf-row-link" (click)="open(w)">
+                      <td>
+                        <a
+                          class="sf-cell-primary"
+                          [routerLink]="['/o', org.orgId(), 'workflows', w.id]"
+                          (click)="$event.stopPropagation()"
+                          >{{ w.name }}</a
+                        >
+                        @if (w.description) {
+                          <span class="sf-faint desc">{{ w.description }}</span>
+                        }
+                      </td>
+                      <td>
+                        <code>{{ w.trigger_event_type }}</code>
+                      </td>
+                      <td class="steps">
+                        @for (s of w.steps; track s.position) {
+                          <span class="sf-muted"
+                            >{{ s.connector_name
+                            }}<code class="sf-faint">.{{ s.operation }}</code></span
+                          >
+                        }
+                      </td>
+                      <td>
+                        <sf-badge [tone]="w.is_active ? 'success' : 'neutral'" [dot]="true">{{
+                          w.is_active ? 'Active' : 'Inactive'
+                        }}</sf-badge>
+                      </td>
+                      <td class="sf-cell-num">{{ w.version }}</td>
+                      <td><sf-time [value]="w.updated_at" /></td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
             <sf-pagination
               [total]="page.total"
               [limit]="page.limit"

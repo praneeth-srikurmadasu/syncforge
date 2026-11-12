@@ -1,6 +1,6 @@
 <a class="skip" href="#sf-main">Skip to content</a>
 <div class="frame" [class.nav-open]="navOpen()" [class.collapsed]="collapsed()">
-  <aside class="sidebar" aria-label="Main navigation">
+  <aside class="sidebar" aria-label="Sidebar">
     <div class="brand">
       <sf-brand-mark />
       <span class="text">SyncForge</span>
@@ -44,7 +44,7 @@
       </div>
     </ng-template>
 
-    <nav class="nav">
+    <nav class="nav" aria-label="Main navigation">
       @for (group of nav(); track group.label) {
         <div class="nav-group">
           <span class="nav-label">{{ group.label }}</span>

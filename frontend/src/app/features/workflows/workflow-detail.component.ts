@@ -125,45 +125,47 @@ import { WorkflowStepsComponent } from './workflow-steps.component';
                 message="Executions appear when a matching event is processed while the workflow is active."
               />
             } @else {
-              <table class="sf-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Event</th>
-                    <th scope="col">Employee</th>
-                    <th scope="col">Result</th>
-                    <th scope="col">Steps</th>
-                    <th scope="col" class="sf-cell-num">Version</th>
-                    <th scope="col">Started</th>
-                    <th scope="col">Finished</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  @for (x of page.items; track x.id) {
+              <div class="sf-table-wrap">
+                <table class="sf-table">
+                  <thead>
                     <tr>
-                      <td>
-                        <a [routerLink]="['/o', org.orgId(), 'events', x.event_id]">{{
-                          humanize(x.event_type)
-                        }}</a>
-                      </td>
-                      <td><sf-employee-name [id]="x.employee_id" /></td>
-                      <td><sf-status [value]="x.status" /></td>
-                      <td class="jobs">
-                        @for (j of x.jobs; track j.position) {
-                          <span
-                            class="job"
-                            [attr.title]="j.operation + ': ' + j.status"
-                            [class]="'job job--' + j.status"
-                            >{{ j.position }}</span
-                          >
-                        }
-                      </td>
-                      <td class="sf-cell-num">{{ x.workflow_version }}</td>
-                      <td><sf-time [value]="x.started_at" /></td>
-                      <td><sf-time [value]="x.finished_at" /></td>
+                      <th scope="col">Event</th>
+                      <th scope="col">Employee</th>
+                      <th scope="col">Result</th>
+                      <th scope="col">Steps</th>
+                      <th scope="col" class="sf-cell-num">Version</th>
+                      <th scope="col">Started</th>
+                      <th scope="col">Finished</th>
                     </tr>
-                  }
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    @for (x of page.items; track x.id) {
+                      <tr>
+                        <td>
+                          <a [routerLink]="['/o', org.orgId(), 'events', x.event_id]">{{
+                            humanize(x.event_type)
+                          }}</a>
+                        </td>
+                        <td><sf-employee-name [id]="x.employee_id" /></td>
+                        <td><sf-status [value]="x.status" /></td>
+                        <td class="jobs">
+                          @for (j of x.jobs; track j.position) {
+                            <span
+                              class="job"
+                              [attr.title]="j.operation + ': ' + j.status"
+                              [class]="'job job--' + j.status"
+                              >{{ j.position }}</span
+                            >
+                          }
+                        </td>
+                        <td class="sf-cell-num">{{ x.workflow_version }}</td>
+                        <td><sf-time [value]="x.started_at" /></td>
+                        <td><sf-time [value]="x.finished_at" /></td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
               <sf-pagination
                 [total]="page.total"
                 [limit]="page.limit"

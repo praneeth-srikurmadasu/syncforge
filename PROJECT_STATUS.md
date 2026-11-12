@@ -1,6 +1,6 @@
 # SyncForge - Project Status
 
-**Current phase:** 8 in progress - Angular frontend. Milestones 1-8 delivered (1-7 verified on Windows, commit `95a96a8`); 9-10 next.
+**Current phase:** 8 in progress - Angular frontend. Milestones 1-9 delivered (1-8 pushed, commit `e06e838`); 10 next.
 **Last updated:** 2026-11-12
 
 | Phase | Status |
@@ -31,9 +31,16 @@ Plan, screen-to-endpoint map and unsupported features: `docs/PHASE_8_FRONTEND_PL
 | 7 | Workflows and reliability: workflow list (trigger / state filters), step builder (trigger, ordered connector + operation steps, reorder, suggested operation per trigger, duplicate and disconnected-connector warnings, 20-step limit), workflow page (step chain, activate / deactivate, execution history with per-step results); reliability overview (retrying events, open dead letters, circuits not closed, audit-log counts for retries / dead letters / circuit openings / replays, connector protection table, recent retries); dead-letter queue (status and connector filters) and entry page (reason, failed step, error, event, other entries for the event, replay with confirmation) | Done |
 | 7a | Owner request: collapsible sidebar (icons-only rail on screens wider than 900 px, state kept in the browser; drawer on small screens unchanged) | Done |
 | 8 | Data integrity and governance: conflicts list (status, severity, field, application filters) and conflict page (side-by-side values with the authoritative side marked, decide: keep SyncForge's value / use the application's / dismiss, override and note enforced as the API requires, employees:write hint, stale-conflict link to reconcile, history); source-of-truth policies (per field: authoritative system, severity, manual / automatic); audit log (action group, resource, actor, outcome, time range, expandable details, links to the resource); team and roles (add registered users, change roles, remove, own-role and last-admin handling); settings (rename organization, account, memberships, session end, theme, sign out) | Done |
-| 9-10 | QA, documentation | Next |
+| 9 | Quality: Playwright browser suite against the real stack (13 tests: auth, isolation, workforce, integrations, workflow provisioning, dead-letter replay, conflict resolution, viewer RBAC), axe WCAG 2 A/AA checks on 14 pages in both themes, 390 px phone layout check; fixed colour contrast (tokens), phone overflow (tables in scroll containers, chart table), navigation landmark label. Report: `docs/PHASE_8_FRONTEND_TESTING.md` | Done |
+| 10 | Architecture, components and API-integration documents, final Phase 8 report | Next |
 
 ### Phase 8 verification so far (actual results)
+- Milestone 9, Linux workspace (2026-11-12): `npm run e2e` **13 passed** on two consecutive
+  runs (2.5 min each) after fixes; first run had been 4 passed / 9 failed (contrast,
+  phone overflow, landmark label, plus test selector and timing mistakes - see
+  `docs/PHASE_8_FRONTEND_TESTING.md`). `npm run test:ci` **57 passed** (16 files); lint and
+  format (`src` and `e2e`) clean; build success, initial 351.66 kB raw / 96.10 kB transfer;
+  `npm audit --omit=dev` 0 vulnerabilities.
 
 - Windows (milestones 1-4, commit `a7e06a7`): `npm ci`, `npx ng build` (initial 340.70 kB),
   `npm run test:ci` **33 passed**, `npx ng lint` clean, `npm run format:check` clean,

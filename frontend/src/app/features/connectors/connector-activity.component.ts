@@ -55,30 +55,32 @@ type Kind = 'accounts' | 'dead-letters' | 'conflicts' | 'history';
               message="Accounts appear when a workflow or a manual operation creates a user in this application."
             />
           } @else {
-            <table class="sf-table">
-              <thead>
-                <tr>
-                  <th scope="col">Employee</th>
-                  <th scope="col">Account ID in the application</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Last synchronized</th>
-                  <th scope="col">Linked</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (a of page.items; track a.id) {
+            <div class="sf-table-wrap">
+              <table class="sf-table">
+                <thead>
                   <tr>
-                    <td><sf-employee-name [id]="a.employee_id" /></td>
-                    <td>
-                      <code>{{ a.external_id }}</code>
-                    </td>
-                    <td><sf-status [value]="a.status" /></td>
-                    <td><sf-time [value]="a.last_synced_at" /></td>
-                    <td><sf-time [value]="a.created_at" /></td>
+                    <th scope="col">Employee</th>
+                    <th scope="col">Account ID in the application</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Last synchronized</th>
+                    <th scope="col">Linked</th>
                   </tr>
-                }
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  @for (a of page.items; track a.id) {
+                    <tr>
+                      <td><sf-employee-name [id]="a.employee_id" /></td>
+                      <td>
+                        <code>{{ a.external_id }}</code>
+                      </td>
+                      <td><sf-status [value]="a.status" /></td>
+                      <td><sf-time [value]="a.last_synced_at" /></td>
+                      <td><sf-time [value]="a.created_at" /></td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
             <sf-pagination
               [total]="page.total"
               [limit]="page.limit"
@@ -97,41 +99,43 @@ type Kind = 'accounts' | 'dead-letters' | 'conflicts' | 'history';
           @if (page.items.length === 0) {
             <sf-empty-state icon="inbox" title="No dead letters for this connector" />
           } @else {
-            <table class="sf-table">
-              <thead>
-                <tr>
-                  <th scope="col">Employee</th>
-                  <th scope="col">Event</th>
-                  <th scope="col">Operation</th>
-                  <th scope="col">Error</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Dead-lettered</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (d of page.items; track d.id) {
+            <div class="sf-table-wrap">
+              <table class="sf-table">
+                <thead>
                   <tr>
-                    <td><sf-employee-name [id]="d.employee_id" /></td>
-                    <td>
-                      <a [routerLink]="['/o', orgId(), 'dead-letters', d.id]">{{
-                        humanize(d.event_type)
-                      }}</a>
-                    </td>
-                    <td>
-                      <code>{{ d.operation ?? '-' }}</code>
-                    </td>
-                    <td>
-                      {{ humanize(d.error_category) }}
-                      @if (d.http_status) {
-                        <code class="sf-faint">HTTP {{ d.http_status }}</code>
-                      }
-                    </td>
-                    <td><sf-status [value]="d.status" /></td>
-                    <td><sf-time [value]="d.dead_lettered_at" /></td>
+                    <th scope="col">Employee</th>
+                    <th scope="col">Event</th>
+                    <th scope="col">Operation</th>
+                    <th scope="col">Error</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Dead-lettered</th>
                   </tr>
-                }
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  @for (d of page.items; track d.id) {
+                    <tr>
+                      <td><sf-employee-name [id]="d.employee_id" /></td>
+                      <td>
+                        <a [routerLink]="['/o', orgId(), 'dead-letters', d.id]">{{
+                          humanize(d.event_type)
+                        }}</a>
+                      </td>
+                      <td>
+                        <code>{{ d.operation ?? '-' }}</code>
+                      </td>
+                      <td>
+                        {{ humanize(d.error_category) }}
+                        @if (d.http_status) {
+                          <code class="sf-faint">HTTP {{ d.http_status }}</code>
+                        }
+                      </td>
+                      <td><sf-status [value]="d.status" /></td>
+                      <td><sf-time [value]="d.dead_lettered_at" /></td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
             <sf-pagination
               [total]="page.total"
               [limit]="page.limit"
@@ -154,34 +158,36 @@ type Kind = 'accounts' | 'dead-letters' | 'conflicts' | 'history';
               message="Reconcile compares SyncForge's records with the accounts in this application."
             />
           } @else {
-            <table class="sf-table">
-              <thead>
-                <tr>
-                  <th scope="col">Employee</th>
-                  <th scope="col">Field</th>
-                  <th scope="col">SyncForge</th>
-                  <th scope="col">Application</th>
-                  <th scope="col">Severity</th>
-                  <th scope="col">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (c of page.items; track c.id) {
+            <div class="sf-table-wrap">
+              <table class="sf-table">
+                <thead>
                   <tr>
-                    <td><sf-employee-name [id]="c.employee_id" /></td>
-                    <td>
-                      <a [routerLink]="['/o', orgId(), 'conflicts', c.id]">{{
-                        humanize(c.field)
-                      }}</a>
-                    </td>
-                    <td>{{ c.syncforge_value ?? '-' }}</td>
-                    <td>{{ c.external_value ?? '-' }}</td>
-                    <td><sf-status [value]="c.severity" /></td>
-                    <td><sf-status [value]="c.status" /></td>
+                    <th scope="col">Employee</th>
+                    <th scope="col">Field</th>
+                    <th scope="col">SyncForge</th>
+                    <th scope="col">Application</th>
+                    <th scope="col">Severity</th>
+                    <th scope="col">Status</th>
                   </tr>
-                }
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  @for (c of page.items; track c.id) {
+                    <tr>
+                      <td><sf-employee-name [id]="c.employee_id" /></td>
+                      <td>
+                        <a [routerLink]="['/o', orgId(), 'conflicts', c.id]">{{
+                          humanize(c.field)
+                        }}</a>
+                      </td>
+                      <td>{{ c.syncforge_value ?? '-' }}</td>
+                      <td>{{ c.external_value ?? '-' }}</td>
+                      <td><sf-status [value]="c.severity" /></td>
+                      <td><sf-status [value]="c.status" /></td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
             <sf-pagination
               [total]="page.total"
               [limit]="page.limit"

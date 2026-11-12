@@ -47,28 +47,30 @@ const LIMIT = 10;
           @if (page.items.length === 0) {
             <sf-empty-state icon="activity" title="No lifecycle events for this employee" />
           } @else {
-            <table class="sf-table">
-              <thead>
-                <tr>
-                  <th scope="col">Event</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Changed fields</th>
-                  <th scope="col" class="sf-cell-num">Attempts</th>
-                  <th scope="col">Recorded</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (ev of page.items; track ev.id) {
+            <div class="sf-table-wrap">
+              <table class="sf-table">
+                <thead>
                   <tr>
-                    <td class="sf-cell-primary">{{ humanize(ev.event_type) }}</td>
-                    <td><sf-status [value]="ev.status" /></td>
-                    <td class="sf-muted">{{ ev.changed_fields.join(', ') || '-' }}</td>
-                    <td class="sf-cell-num">{{ ev.attempts }}</td>
-                    <td><sf-time [value]="ev.created_at" /></td>
+                    <th scope="col">Event</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Changed fields</th>
+                    <th scope="col" class="sf-cell-num">Attempts</th>
+                    <th scope="col">Recorded</th>
                   </tr>
-                }
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  @for (ev of page.items; track ev.id) {
+                    <tr>
+                      <td class="sf-cell-primary">{{ humanize(ev.event_type) }}</td>
+                      <td><sf-status [value]="ev.status" /></td>
+                      <td class="sf-muted">{{ ev.changed_fields.join(', ') || '-' }}</td>
+                      <td class="sf-cell-num">{{ ev.attempts }}</td>
+                      <td><sf-time [value]="ev.created_at" /></td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
             <sf-pagination
               [total]="page.total"
               [limit]="page.limit"
@@ -91,34 +93,36 @@ const LIMIT = 10;
               message="Conflicts appear when reconciliation finds this person's data different in a connected application."
             />
           } @else {
-            <table class="sf-table">
-              <thead>
-                <tr>
-                  <th scope="col">Field</th>
-                  <th scope="col">SyncForge</th>
-                  <th scope="col">Application</th>
-                  <th scope="col">Severity</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Last detected</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (c of page.items; track c.id) {
+            <div class="sf-table-wrap">
+              <table class="sf-table">
+                <thead>
                   <tr>
-                    <td class="sf-cell-primary">
-                      <a [routerLink]="['/o', orgId(), 'conflicts', c.id]">{{
-                        humanize(c.field)
-                      }}</a>
-                    </td>
-                    <td>{{ c.syncforge_value ?? '-' }}</td>
-                    <td>{{ c.external_value ?? '-' }}</td>
-                    <td><sf-status [value]="c.severity" /></td>
-                    <td><sf-status [value]="c.status" /></td>
-                    <td><sf-time [value]="c.last_detected_at" /></td>
+                    <th scope="col">Field</th>
+                    <th scope="col">SyncForge</th>
+                    <th scope="col">Application</th>
+                    <th scope="col">Severity</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Last detected</th>
                   </tr>
-                }
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  @for (c of page.items; track c.id) {
+                    <tr>
+                      <td class="sf-cell-primary">
+                        <a [routerLink]="['/o', orgId(), 'conflicts', c.id]">{{
+                          humanize(c.field)
+                        }}</a>
+                      </td>
+                      <td>{{ c.syncforge_value ?? '-' }}</td>
+                      <td>{{ c.external_value ?? '-' }}</td>
+                      <td><sf-status [value]="c.severity" /></td>
+                      <td><sf-status [value]="c.status" /></td>
+                      <td><sf-time [value]="c.last_detected_at" /></td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
             <sf-pagination
               [total]="page.total"
               [limit]="page.limit"

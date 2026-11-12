@@ -156,32 +156,34 @@ const REASONS: Record<string, string> = {
             <div class="sf-card__header">
               <h2 class="sf-card__title">Other dead letters for this event</h2>
             </div>
-            <table class="sf-table">
-              <thead>
-                <tr>
-                  <th scope="col">When</th>
-                  <th scope="col">Step</th>
-                  <th scope="col">Error</th>
-                  <th scope="col">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (h of otherEntries(d); track h.id) {
+            <div class="sf-table-wrap">
+              <table class="sf-table">
+                <thead>
                   <tr>
-                    <td>
-                      <a [routerLink]="['/o', org.orgId(), 'dead-letters', h.id]"
-                        ><sf-time [value]="h.dead_lettered_at"
-                      /></a>
-                    </td>
-                    <td>
-                      <code>{{ h.operation ?? '-' }}</code>
-                    </td>
-                    <td>{{ humanize(h.error_category) }}</td>
-                    <td><sf-status [value]="h.status" /></td>
+                    <th scope="col">When</th>
+                    <th scope="col">Step</th>
+                    <th scope="col">Error</th>
+                    <th scope="col">Status</th>
                   </tr>
-                }
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  @for (h of otherEntries(d); track h.id) {
+                    <tr>
+                      <td>
+                        <a [routerLink]="['/o', org.orgId(), 'dead-letters', h.id]"
+                          ><sf-time [value]="h.dead_lettered_at"
+                        /></a>
+                      </td>
+                      <td>
+                        <code>{{ h.operation ?? '-' }}</code>
+                      </td>
+                      <td>{{ humanize(h.error_category) }}</td>
+                      <td><sf-status [value]="h.status" /></td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
           </section>
         }
       } @else {

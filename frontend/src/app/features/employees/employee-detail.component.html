@@ -123,30 +123,32 @@
               @if (page.items.length === 0) {
                 <sf-empty-state icon="users" title="No direct reports" />
               } @else {
-                <table class="sf-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Name</th>
-                      <th scope="col">Designation</th>
-                      <th scope="col">Department</th>
-                      <th scope="col">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    @for (r of page.items; track r.id) {
+                <div class="sf-table-wrap">
+                  <table class="sf-table">
+                    <thead>
                       <tr>
-                        <td>
-                          <a [routerLink]="['/o', org.orgId(), 'employees', r.id]">{{
-                            r.full_name
-                          }}</a>
-                        </td>
-                        <td>{{ r.designation ?? '-' }}</td>
-                        <td>{{ r.department?.name ?? '-' }}</td>
-                        <td><sf-status [value]="r.employment_status" /></td>
+                        <th scope="col">Name</th>
+                        <th scope="col">Designation</th>
+                        <th scope="col">Department</th>
+                        <th scope="col">Status</th>
                       </tr>
-                    }
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      @for (r of page.items; track r.id) {
+                        <tr>
+                          <td>
+                            <a [routerLink]="['/o', org.orgId(), 'employees', r.id]">{{
+                              r.full_name
+                            }}</a>
+                          </td>
+                          <td>{{ r.designation ?? '-' }}</td>
+                          <td>{{ r.department?.name ?? '-' }}</td>
+                          <td><sf-status [value]="r.employment_status" /></td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
                 @if (page.total > page.items.length) {
                   <p class="note sf-faint">Showing {{ page.items.length }} of {{ page.total }}.</p>
                 }
