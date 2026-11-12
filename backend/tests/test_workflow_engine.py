@@ -201,9 +201,9 @@ def test_a_failed_step_fails_the_execution_and_skips_the_rest(
 
     result = EventProcessor(db_session, connector_settings).process(event.id)
 
-    assert result.outcome == "failed"
+    assert result.outcome == "dead_letter"
     db_session.refresh(event)
-    assert event.status is IntegrationEventStatus.FAILED
+    assert event.status is IntegrationEventStatus.DEAD_LETTER
     assert event.last_error == "1 of 1 workflow execution(s) failed."
     [execution] = executions(db_session, event)
     assert execution.status is ExecutionStatus.FAILED

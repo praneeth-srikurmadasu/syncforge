@@ -54,6 +54,10 @@ ADMIN, MANAGER, VIEWER = (
         (MANAGER, Permission.EVENTS_READ, True),
         (MANAGER, Permission.EMPLOYEES_WRITE, False),
         (ADMIN, Permission.WORKFLOWS_MANAGE, True),
+        # Phase 6: replaying dead-lettered events makes real external calls.
+        (VIEWER, Permission.EVENTS_REPLAY, False),
+        (MANAGER, Permission.EVENTS_REPLAY, True),
+        (ADMIN, Permission.EVENTS_REPLAY, True),
     ],
 )
 def test_role_permission_matrix(

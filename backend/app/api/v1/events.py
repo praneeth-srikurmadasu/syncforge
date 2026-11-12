@@ -30,7 +30,7 @@ _ERRORS = {
 }
 
 
-def _fields(event: IntegrationEvent) -> dict:
+def event_fields(event: IntegrationEvent) -> dict:
     return {
         "id": event.id,
         "event_type": event.event_type,
@@ -59,7 +59,8 @@ def list_events(
 ) -> Page[EventResponse]:
     """Events, newest first. Filter by processing status, type or employee.
 
-    `retrying` events have a step waiting for its next attempt (`next_attempt_at`)."""
+    `retrying` events have a step waiting for its next attempt (`next_attempt_at`).
+    `dead_letter` events failed for good and wait in the dead-letter queue."""
     events, total = EventRepository(db).list(
         access.organization.id,
         EventFilters(status=event_status, event_type=event_type, employee_id=employee_id),
@@ -67,7 +68,7 @@ def list_events(
         offset=offset,
     )
     return Page(
-        items=[EventResponse(**_fields(e)) for e in events],
+        items=[EventResponse(**event_fields(e)) for e in events],
         total=total,
         limit=limit,
         offset=offset,
@@ -82,7 +83,7 @@ def get_event(event_id: uuid.UUID, access: CanReadEvents, db: DbSession) -> Even
         raise NotFoundError("Event not found.", code="event_not_found")
     executions = ExecutionRepository(db).for_event(access.organization.id, event.id)
     return EventDetailResponse(
-        **_fields(event), executions=[execution_response(*row) for row in executions]
+        **event_fields(event), executions=[execution_response(*row) for row in executions]
     )
 
 

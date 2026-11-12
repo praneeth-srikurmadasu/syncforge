@@ -22,15 +22,17 @@ processing is built to be safe to repeat:
    exhausted attempts fail the job for good.
 5. **Finish.** The event becomes `completed` if every execution succeeded (or nothing
    matched), `retrying` (with the earliest `next_attempt_at`) if a job waits for a retry,
-   otherwise `failed`. The outbox relay re-dispatches retrying events when they are due.
+   otherwise `dead_letter`: a `dead_letter_events` entry preserves the error until an
+   authorized user replays the event (app/reliability/dead_letter.py). The outbox relay
+   re-dispatches retrying events when they are due.
 
 Each connector call goes through `ConnectorService.run_operation`, which records the
 external account link in its own commit. If a worker dies after the external call but
 before the job is marked succeeded, the re-run finds the link and treats `create_user`
 as already done instead of creating a second account.
 
-Not in this module yet (later Phase 6 parts): dead-lettering and replay, idempotency
-keys towards external APIs, the circuit breaker.
+Not in this module yet (later Phase 6 parts): idempotency keys towards external APIs,
+the circuit breaker.
 """
 
 import logging
@@ -59,6 +61,7 @@ from app.models import (
     Workflow,
     WorkflowExecution,
 )
+from app.reliability.dead_letter import dead_letter
 from app.reliability.retry import RetryPolicy, decide
 from app.services.connectors import ConnectorService
 
@@ -74,7 +77,7 @@ _SKIP_CODES = {
 @dataclass(frozen=True)
 class ProcessResult:
     event_id: uuid.UUID
-    outcome: str  # "completed", "retrying", "failed", or "skipped" (not claimable)
+    outcome: str  # "completed", "retrying", "dead_letter", or "skipped" (not claimable)
     executions: int = 0
 
 
@@ -155,13 +158,15 @@ class EventProcessor:
             event.completed_at = None
         else:
             event.status = (
-                IntegrationEventStatus.FAILED if failed else IntegrationEventStatus.COMPLETED
+                IntegrationEventStatus.DEAD_LETTER if failed else IntegrationEventStatus.COMPLETED
             )
             event.next_attempt_at = None
             event.completed_at = _now()
         event.last_error = (
             f"{len(failed)} of {len(executions)} workflow execution(s) failed." if failed else None
         )
+        if event.status is IntegrationEventStatus.DEAD_LETTER:
+            dead_letter(self.session, event, failed)
         self.session.commit()
 
     # ---- claim -----------------------------------------------------------------------
@@ -352,7 +357,7 @@ class EventProcessor:
         else:
             decision = decide(
                 self.policy,
-                attempts_made=job.attempts,
+                attempts_made=job.attempts - job.attempts_at_last_replay,  # this round
                 retryable=outcome.retryable,
                 retry_after=outcome.retry_after,
                 rng=self.rng,
@@ -364,9 +369,10 @@ class EventProcessor:
             else:
                 job.status = JobStatus.FAILED
                 if decision.reason == "attempts_exhausted":
-                    job.error_message = (
-                        f"Gave up after {job.attempts} attempts: {outcome.message or ''}"
-                    )[:500]
+                    made = job.attempts - job.attempts_at_last_replay
+                    job.error_message = (f"Gave up after {made} attempts: {outcome.message or ''}")[
+                        :500
+                    ]
         self.session.commit()
 
     def _close_interrupted_attempts(self, job: SynchronizationJob) -> None:

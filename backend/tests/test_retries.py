@@ -237,7 +237,7 @@ def test_attempts_are_exhausted_after_the_configured_maximum(
         relay.run_once()
         outcomes.append(processor.process(event.id).outcome)
 
-    assert outcomes == ["retrying", "retrying", "failed"]
+    assert outcomes == ["retrying", "retrying", "dead_letter"]
     _, google, payroll = jobs(db_session, event)
     assert (google.status, google.attempts) == (JobStatus.FAILED, 3)
     assert google.error_message.startswith("Gave up after 3 attempts")
@@ -245,7 +245,7 @@ def test_attempts_are_exhausted_after_the_configured_maximum(
     assert google.attempt_history[-1].next_attempt_at is None  # no fourth attempt scheduled
     assert payroll.status is JobStatus.SKIPPED
     db_session.refresh(event)
-    assert (event.status, event.next_attempt_at) == (IntegrationEventStatus.FAILED, None)
+    assert (event.status, event.next_attempt_at) == (IntegrationEventStatus.DEAD_LETTER, None)
     execution = db_session.scalar(
         select(WorkflowExecution).where(WorkflowExecution.event_id == event.id)
     )
@@ -267,7 +267,7 @@ def test_permanent_failures_are_not_retried(
 
     result = EventProcessor(db_session, connector_settings).process(event.id)
 
-    assert result.outcome == "failed"
+    assert result.outcome == "dead_letter"
     _, google, _ = jobs(db_session, event)
     assert (google.status, google.attempts, google.error_category) == (
         JobStatus.FAILED,

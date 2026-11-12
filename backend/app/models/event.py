@@ -27,6 +27,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    UniqueConstraint,
     func,
     text,
 )
@@ -41,7 +42,9 @@ class IntegrationEventStatus(enum.StrEnum):
     PROCESSING = "processing"  # claimed by a worker (until locked_until)
     RETRYING = "retrying"  # a step failed retryably; due again at next_attempt_at
     COMPLETED = "completed"  # every matching workflow succeeded (or none matched)
-    FAILED = "failed"  # at least one workflow step failed
+    # A step failed for good (not retryable, or out of attempts). The event waits in the
+    # dead-letter queue (a dead_letter_events entry) until someone replays it.
+    DEAD_LETTER = "dead_letter"
 
 
 class IntegrationEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -53,6 +56,7 @@ class IntegrationEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             name="fk_integration_events_employee_same_organization",
             ondelete="CASCADE",
         ),
+        UniqueConstraint("organization_id", "id"),  # target of composite foreign keys
         Index("ix_integration_events_organization_id_created_at", "organization_id", "created_at"),
         Index("ix_integration_events_organization_id_status", "organization_id", "status"),
         Index("ix_integration_events_employee_id", "employee_id"),

@@ -9,6 +9,7 @@ from app.models.connector import (
     ExternalAccount,
     ExternalAccountStatus,
 )
+from app.models.dead_letter import DeadLetterEvent, DeadLetterReason, DeadLetterStatus
 from app.models.employee import Department, Employee, EmploymentStatus
 from app.models.event import IntegrationEvent, IntegrationEventStatus, OutboxEvent
 from app.models.organization import Organization, OrganizationMembership, OrganizationRole
@@ -34,6 +35,9 @@ __all__ = [
     "Connector",
     "ConnectorCredential",
     "ConnectorStatus",
+    "DeadLetterEvent",
+    "DeadLetterReason",
+    "DeadLetterStatus",
     "Department",
     "Employee",
     "EmploymentStatus",

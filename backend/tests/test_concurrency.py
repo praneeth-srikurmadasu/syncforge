@@ -10,6 +10,9 @@
 3. A worker receiving a retry message while the outbox relay still holds the event row
    (it publishes first, then commits) claims the event instead of skipping it.
 
+4. Two users replay the same dead-letter entry at the same moment: exactly one replay
+   happens; the other waits for the row lock, re-reads, and gets `already_replayed`.
+
 These tests use two real, separately committed database sessions (not the rolled-back
 test session), so they exercise PostgreSQL's actual locking.
 """
@@ -251,3 +254,153 @@ def test_a_worker_claims_a_due_retry_even_while_the_relay_holds_the_row(
 
     assert waited, "the worker must wait for the relay's transaction"
     assert outcome == {"claimed": True}
+
+
+# ---- dead-letter replay ----------------------------------------------------------------
+
+
+@pytest.fixture
+def dead_lettered() -> Iterator[tuple[uuid.UUID, uuid.UUID, uuid.UUID]]:
+    """A committed organization with one dead-lettered event: (org, entry, user)."""
+    from datetime import UTC, datetime
+
+    from app.models import (
+        Connector,
+        DeadLetterEvent,
+        DeadLetterReason,
+        ExecutionStatus,
+        IntegrationEvent,
+        IntegrationEventStatus,
+        JobStatus,
+        SynchronizationJob,
+        Workflow,
+        WorkflowExecution,
+        WorkflowStep,
+    )
+
+    suffix = uuid.uuid4().hex[:8]
+    with SessionLocal() as session:
+        org = Organization(name="Replay Race", slug=f"replay-race-{suffix}")
+        user = User(email=f"replay-{suffix}@example.com", full_name="R", password_hash="x")
+        session.add_all([org, user])
+        session.flush()
+        connector = Connector(
+            organization_id=org.id, connector_type="slack", connector_version="1.0.0", name="s"
+        )
+        employee = Employee(
+            organization_id=org.id,
+            employee_number="E-1",
+            first_name="R",
+            last_name="R",
+            email=f"r-{suffix}@example.com",
+            joining_date=date(2026, 11, 1),
+        )
+        session.add_all([connector, employee])
+        session.flush()
+        workflow = Workflow(
+            organization_id=org.id,
+            name="Onboarding",
+            trigger_event_type="employee.created",
+            is_active=True,
+        )
+        workflow.steps = [
+            WorkflowStep(
+                organization_id=org.id,
+                position=1,
+                connector_id=connector.id,
+                operation="create_user",
+            )
+        ]
+        event = IntegrationEvent(
+            organization_id=org.id,
+            event_type="employee.created",
+            employee_id=employee.id,
+            payload={},
+            status=IntegrationEventStatus.DEAD_LETTER,
+        )
+        session.add_all([workflow, event])
+        session.flush()
+        execution = WorkflowExecution(
+            organization_id=org.id,
+            event_id=event.id,
+            workflow_id=workflow.id,
+            workflow_version=1,
+            status=ExecutionStatus.FAILED,
+        )
+        execution.jobs = [
+            SynchronizationJob(
+                organization_id=org.id,
+                position=1,
+                connector_id=connector.id,
+                operation="create_user",
+                employee_id=employee.id,
+                status=JobStatus.FAILED,
+                attempts=1,
+            )
+        ]
+        session.add(execution)
+        session.flush()
+        entry = DeadLetterEvent(
+            organization_id=org.id,
+            event_id=event.id,
+            reason=DeadLetterReason.NON_RETRYABLE,
+            job_id=execution.jobs[0].id,
+            attempts=1,
+            dead_lettered_at=datetime.now(UTC),
+        )
+        session.add(entry)
+        session.commit()
+        ids = (org.id, entry.id, user.id)
+    yield ids
+    with SessionLocal() as session:
+        session.execute(delete(Organization).where(Organization.id == ids[0]))
+        session.execute(delete(User).where(User.id == ids[2]))
+        session.commit()
+
+
+def test_simultaneous_replays_of_one_entry_replay_it_once(
+    dead_lettered: tuple[uuid.UUID, uuid.UUID, uuid.UUID],
+) -> None:
+    from app.models import OutboxEvent
+    from app.repositories.dead_letters import DeadLetterRepository
+    from app.services.dead_letters import DeadLetterService
+
+    org_id, entry_id, user_id = dead_lettered
+    outcome: dict[str, object] = {}
+
+    # Request 1 has locked the entry (the first step of a replay) and holds the lock.
+    first = SessionLocal()
+    DeadLetterRepository(first).get(org_id, entry_id, for_update=True)
+
+    def second_replay() -> None:
+        with SessionLocal() as second:
+            try:
+                DeadLetterService(second).replay(
+                    second.get(Organization, org_id), entry_id, second.get(User, user_id)
+                )
+                outcome["second"] = "replayed"
+            except ConflictError as exc:
+                outcome["second"] = exc.code
+
+    thread = threading.Thread(target=second_replay)
+    try:
+        thread.start()
+        thread.join(timeout=1.0)
+        waited = thread.is_alive()
+        DeadLetterService(first).replay(
+            first.get(Organization, org_id), entry_id, first.get(User, user_id)
+        )
+    finally:
+        first.close()
+        thread.join(timeout=10)
+
+    assert waited, "the second replay must wait for the first one's lock"
+    assert outcome == {"second": "already_replayed"}
+    with SessionLocal() as check:
+        entry = DeadLetterRepository(check).get(org_id, entry_id)
+        outbox_rows = check.scalar(
+            select(func.count())
+            .select_from(OutboxEvent)
+            .where(OutboxEvent.event_id == entry.event_id)
+        )
+    assert outbox_rows == 1  # one replay was queued, not two

@@ -80,7 +80,7 @@ def test_filters(client: TestClient, db_session: Session) -> None:
     assert types(event_type="employee.department_changed") == ["employee.department_changed"]
     assert types(employee_id=str(bob.id)) == ["employee.updated"]
     assert types(event_status="completed") == ["employee.updated"]
-    assert types(event_status="failed") == []
+    assert types(event_status="dead_letter") == []
     invalid = client.get(url(org), params={"event_type": "nope"}, headers=headers)
     assert invalid.status_code == 422
 

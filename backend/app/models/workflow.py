@@ -217,6 +217,9 @@ class SynchronizationJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         UniqueConstraint("organization_id", "id"),  # target of the attempts' composite FK
         CheckConstraint("position >= 1", name="position_positive"),
         CheckConstraint(_in_list("operation", tuple(StepOperation)), name="operation"),
+        CheckConstraint(
+            "attempts_at_last_replay BETWEEN 0 AND attempts", name="replay_offset_valid"
+        ),
         ForeignKeyConstraint(
             ["organization_id", "execution_id"],
             ["workflow_executions.organization_id", "workflow_executions.id"],
@@ -253,6 +256,12 @@ class SynchronizationJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     # Number of times the external call was attempted (history: synchronization_attempts).
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    # `attempts` when the job was last replayed from the dead-letter queue. The retry
+    # budget counts only the attempts made since then, so a replay gets a full budget
+    # while the attempt numbering (and history) keeps going.
+    attempts_at_last_replay: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
     next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     external_id: Mapped[str | None] = mapped_column(String(255))
     error_category: Mapped[str | None] = mapped_column(String(30))

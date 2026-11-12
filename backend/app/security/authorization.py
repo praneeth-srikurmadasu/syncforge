@@ -40,6 +40,7 @@ class Permission(enum.StrEnum):
     WORKFLOWS_READ = "workflows:read"
     WORKFLOWS_MANAGE = "workflows:manage"
     EVENTS_READ = "events:read"
+    EVENTS_REPLAY = "events:replay"  # send dead-lettered events back for processing
 
 
 _VIEWER = frozenset(
@@ -56,10 +57,11 @@ _VIEWER = frozenset(
 
 ROLE_PERMISSIONS: dict[OrganizationRole, frozenset[Permission]] = {
     OrganizationRole.VIEWER: _VIEWER,
-    # Integration managers configure and operate integrations (connectors and
-    # workflows), but do not manage people, departments or the organization itself.
+    # Integration managers configure and operate integrations (connectors, workflows,
+    # replaying failed events), but do not manage people, departments or the
+    # organization itself.
     OrganizationRole.INTEGRATION_MANAGER: _VIEWER
-    | {Permission.CONNECTORS_MANAGE, Permission.WORKFLOWS_MANAGE},
+    | {Permission.CONNECTORS_MANAGE, Permission.WORKFLOWS_MANAGE, Permission.EVENTS_REPLAY},
     OrganizationRole.ORG_ADMIN: frozenset(Permission),
 }
 
