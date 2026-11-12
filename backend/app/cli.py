@@ -17,9 +17,11 @@ next to the Celery workers - see docs/09):
 
     python -m app.cli outbox-relay
 
-Delete expired idempotency records (run daily, e.g. from cron or a scheduled job):
+Delete expired rows - revoked (logged-out) tokens past their expiry, and idempotency
+records past IDEMPOTENCY_TTL_HOURS. Safe to run at any time; run it daily from a scheduler
+(cron, Windows Task Scheduler, a Kubernetes CronJob):
 
-    python -m app.cli purge-idempotency-records
+    python -m app.cli purge-expired
 """
 
 import argparse
@@ -27,6 +29,7 @@ import getpass
 import logging
 import sys
 import time
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -36,7 +39,7 @@ from app.core.logging import configure_logging
 from app.events.relay import OutboxRelay
 from app.models import User
 from app.reliability.idempotency import purge_expired
-from app.repositories.users import UserRepository
+from app.repositories.users import RevokedTokenRepository, UserRepository
 from app.schemas.auth import PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH
 from app.security.passwords import hash_password
 from app.seed import SeedError, seed_demo
@@ -69,6 +72,18 @@ def create_superadmin(
     return user
 
 
+def purge_expired_rows(session: Session, *, now: datetime | None = None) -> tuple[int, int]:
+    """Delete expired revoked tokens and idempotency records. Returns (tokens, records)."""
+    now = now or datetime.now(UTC)
+    tokens = RevokedTokenRepository(session).purge_expired(now)
+    session.commit()
+    records = purge_expired(session, now=now)
+    logging.getLogger("syncforge.maintenance").info(
+        "expired rows purged", extra={"revoked_tokens": tokens, "idempotency_records": records}
+    )
+    return tokens, records
+
+
 def _prompt_password() -> str:
     password = getpass.getpass("Password (12-128 characters): ")
     if password != getpass.getpass("Repeat password: "):
@@ -86,16 +101,19 @@ def main(argv: list[str] | None = None) -> int:
     seed.add_argument("--admin-email", required=True, help="An already registered user")
     relay = commands.add_parser("outbox-relay", help="Publish outbox events to the broker")
     relay.add_argument("--once", action="store_true", help="Run one round, then exit")
-    commands.add_parser("purge-idempotency-records", help="Delete expired Idempotency-Key records")
+    commands.add_parser(
+        "purge-expired", help="Delete expired revoked tokens and idempotency records"
+    )
     args = parser.parse_args(argv)
 
     if args.command == "seed-demo":
         return _seed_demo(args.admin_email)
     if args.command == "outbox-relay":
         return run_outbox_relay(once=args.once)
-    if args.command == "purge-idempotency-records":
+    if args.command == "purge-expired":
         with SessionLocal() as session:
-            print(f"Deleted {purge_expired(session)} expired idempotency record(s).")
+            tokens, records = purge_expired_rows(session)
+        print(f"Deleted {tokens} expired revoked token(s) and {records} idempotency record(s).")
         return 0
 
     with SessionLocal() as session:

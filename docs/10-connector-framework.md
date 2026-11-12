@@ -1,8 +1,10 @@
 # 10 - Connector Framework
 
 > **Scope:** implemented in Phase 4. Since Phase 5 the workflow engine runs the same
-> operations automatically ([docs/11](11-workflow-engine.md)); retries, idempotency keys and
-> the circuit breaker are Phase 6. Nothing here is planned-only.
+> operations automatically ([docs/11](11-workflow-engine.md)); since Phase 6 with retries,
+> idempotency keys, a circuit breaker, rate limits and an operation deadline
+> ([docs/12](12-reliability-and-retries.md), [docs/13](13-idempotency.md)). Nothing here is
+> planned-only.
 
 A **connector** is a configured connection from one organization to one external
 application. The framework gives every application the same five operations and the same
@@ -96,7 +98,7 @@ changes.
 | Operation | Purpose | Slack | Google | Payroll |
 |---|---|---|---|---|
 | `test_connection` | Cheap read-only call proving the credentials work | `GET /scim/v2/ServiceProviderConfig` | token exchange + `GET /users?maxResults=1` | `GET /v1/ping` |
-| `create_user` | Provision an account | `POST /scim/v2/Users` | `POST /admin/directory/v1/users` | `POST /v1/employees` |
+| `create_user` | Provision an account (optional `idempotency_key`, sent as `Idempotency-Key`) | `POST /scim/v2/Users` | `POST /admin/directory/v1/users` | `POST /v1/employees` |
 | `update_user` | Push changed attributes | `PATCH` (SCIM replace) | `PATCH /users/{id}` | `PATCH /v1/employees/{id}` |
 | `deactivate_user` | Revoke access, keep history | `DELETE` (Slack deactivates) | `PATCH {"suspended": true}` | `PATCH {"status": "inactive"}` |
 | `get_user` | Read the account's current state | `GET /scim/v2/Users/{id}` | `GET /users/{id}` | `GET /v1/employees/{id}` |
@@ -113,7 +115,7 @@ change emails.
 ## 4. Error normalization
 
 Every failure becomes a `ConnectorError` with a **category**. The category decides whether
-a retry can help (the Phase 6 retry engine reads `retryable`):
+a retry can help (the retry engine reads `retryable` - [docs/12](12-reliability-and-retries.md#2-failure-classification)):
 
 | Category | Produced by | Retryable |
 |---|---|---|
@@ -123,9 +125,11 @@ a retry can help (the Phase 6 retry engine reads `retryable`):
 | `not_found` | 404 | no |
 | `conflict` | 409 (e.g. user already exists) | no |
 | `rate_limited` | 429, with `retry_after` parsed from `Retry-After` (seconds or HTTP date, capped at 1 hour) | **yes** |
-| `timeout` | connect or read timeout, 408 | **yes** |
+| `timeout` | connect, read or operation timeout (`operation_timeout`), 408 | **yes** |
 | `network` | connection refused, DNS failure, reset | **yes** |
 | `server` | 5xx (503 also reads `Retry-After`) | **yes** |
+| `in_progress` | 409 `idempotency_key_in_use`: an earlier request with the same idempotency key is still running ([docs/13](13-idempotency.md)) | **yes** |
+| `circuit_open` | not an HTTP answer: the connector's circuit breaker refused the call, `retry_after` = time left ([docs/12](12-reliability-and-retries.md#7-the-circuit-breaker)) | **yes** |
 | `permanent` | any other 4xx, unexpected redirect | no |
 | `configuration` | our side: disallowed host, unsupported version, bad stored settings | no |
 
@@ -145,9 +149,10 @@ normalized error in `details`:
 ```
 
 A 429 from Slack is reported as `502` with `category: rate_limited`, not as our own 429:
-SyncForge itself is not rate-limiting the caller. **Phase 4 classifies and reports**
-rate limits and transient failures. Acting on them with backoff, jitter, `Retry-After`
-scheduling and dead-lettering is Phase 6.
+SyncForge itself is not rate-limiting the caller. In workflows, the retry engine acts on
+these categories with backoff, jitter, `Retry-After` and the dead-letter queue
+([docs/12](12-reliability-and-retries.md)); the manual operations endpoint reports them and
+does not retry.
 
 ## 5. The HTTP client (`ConnectorHttpClient`)
 
@@ -155,7 +160,7 @@ Every adapter makes its calls through one client:
 
 | Protection | Detail |
 |---|---|
-| Timeouts | `CONNECTOR_CONNECT_TIMEOUT_SECONDS` (default 3) and `CONNECTOR_READ_TIMEOUT_SECONDS` (default 10). No call can hang a request or worker forever. |
+| Timeouts | `CONNECTOR_CONNECT_TIMEOUT_SECONDS` (default 3) and `CONNECTOR_READ_TIMEOUT_SECONDS` (default 10) per request, plus `CONNECTOR_OPERATION_TIMEOUT_SECONDS` (default 30) for one whole operation: a client is built per operation, starts a deadline, and cuts each request's timeouts down to the time left; past it, `operation_timeout` without sending the request. No operation can hang a request or worker forever, however many requests it makes. |
 | Host allowlist (SSRF) | The base URL's host must be in `CONNECTOR_ALLOWED_HOSTS`. Checked when a connector is saved *and* on every call. Without it, an admin could point a connector at an internal address such as the cloud metadata service `169.254.169.254`. |
 | No redirects | A redirect could lead to a host that isn't allowed, so it is treated as a permanent error. |
 | No implicit proxies | `trust_env=False`: environment proxy settings are ignored. |
@@ -290,10 +295,12 @@ sequenceDiagram
     S->>DB: load connector + employee (same organization) + existing link
     S->>S: rules: not disconnected, not already linked, not terminated
     S->>S: decrypt credentials, build adapter
-    S->>A: create_user(profile)
-    A->>X: HTTP (timeouts, allowlist)
+    S->>DB: circuit breaker: allow, or refuse with circuit_open
+    S->>A: create_user(profile, idempotency_key)
+    A->>X: HTTP (timeouts, deadline, allowlist, Idempotency-Key)
     X-->>A: 201 {"id": "U..."}
     A-->>S: ExternalUser
+    S->>DB: record the result in the circuit breaker
     S->>DB: INSERT external_accounts, COMMIT
     S-->>C: 200 {external_id, external_active, account_status, latency_ms}
 ```
@@ -303,10 +310,14 @@ other requests. If two requests create the same link at the same moment, the uni
 constraint on `(connector_id, employee_id)` lets one win. The vendor itself rejects the
 duplicate account.
 
-**Phase 4 limitation:** operations are synchronous, triggered by an admin, and attempted
-once. Suppose the vendor creates the account but SyncForge crashes before saving the
-link. Retrying `create_user` then gets `conflict` from the vendor. Phase 6 resolves this
-with idempotency keys and by adopting the existing account.
+**Crash window.** Suppose the vendor creates the account but SyncForge crashes before saving
+the link. The workflow engine's next attempt sends the same idempotency key
+(`syncforge-job-<id>`), so an API that honours keys returns the existing account instead of
+creating another; the three mocks do. The real Slack SCIM and Google Directory APIs do not
+document such a header: there the repeat gets `conflict` and ends in the dead-letter queue -
+visible, not duplicated. Adopting an existing account by email ("find before create") is
+not implemented ([docs/13, section 3](13-idempotency.md#3-outgoing-idempotency-keys-on-external-create-calls)).
+The manual operations endpoint sends no idempotency key.
 
 ## 11. Adding a new connector
 
@@ -322,8 +333,9 @@ with idempotency keys and by adopting the existing account.
 6. Add the default base URL to `Settings` and `.env.example`.
 7. Add a mock to `mock-services/` and add the type to the parametrized adapter tests.
 
-The service, API, encryption, error handling, permissions and tenant isolation need no
-changes.
+The service, API, encryption, error handling, permissions, tenant isolation, retries,
+circuit breaker and rate limiting need no changes. If the vendor supports idempotency keys
+under another header name, map `idempotency_key` to it in the adapter's `create_user`.
 
 ## 12. Mock services and failure injection
 
@@ -332,8 +344,16 @@ See [mock-services/README.md](../mock-services/README.md). Each mock supports qu
 - a rate limit with `Retry-After`;
 - a timeout delay.
 
-The Google mock can also expire every issued token. The connector tests start all three
-mocks as real HTTP servers, so every failure category above is produced over real sockets.
+The Google mock can also expire every issued token. A timeout fault delays the request but
+still executes it, like a slow server whose answer arrives after the client gave up.
+
+All mocks honour `Idempotency-Key` on POST: the same key and body replays the stored 2xx
+response (`Idempotent-Replayed: true`), a different body is `422 idempotency_key_reused`, a
+repeat while the first request runs is `409 idempotency_key_in_use`. The request log
+(`GET /_mock/state`) marks replays with `idempotent_replay: true`.
+
+The connector tests start all three mocks as real HTTP servers, so every failure category
+above is produced over real sockets.
 
 ## 13. Tests
 
@@ -344,6 +364,8 @@ mocks as real HTTP servers, so every failure category above is produced over rea
 | `test_connector_models.py` | Unique names, one credential set per connector, cross-organization rejection, cascades, external-account uniqueness |
 | `test_connector_adapters.py` | Each of the 3 adapters against its live mock: test, full lifecycle, payload shape, wrong credentials, conflict, not found, 503, 429 with `Retry-After`, read timeout, refused connection, Google token caching and refresh |
 | `test_connectors_api.py` | Catalog, create with encrypted storage, validation, test success and failure, rotation, disconnect and reconnect, operations for all 3 types, 502 mapping, permissions, tenant isolation, no credentials in logs |
+| `test_idempotency.py` | Each mock honours `Idempotency-Key`; conflict without a key; key reuse refused |
+| `test_circuit_breaker.py` | Operation deadline across several requests; no request after the deadline; breaker and rate limits |
 
 ### Platform note: refused connections on Windows
 

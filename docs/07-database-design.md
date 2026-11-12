@@ -1,6 +1,6 @@
 # 07 - Database Design
 
-> **Scope:** tables implemented as of Phase 5 (migrations `0001`-`0005`). Later phases
+> **Scope:** tables implemented as of Phase 6 (migrations `0001`-`0009`). Later phases
 > append their tables here when they are built.
 
 Database: **PostgreSQL 16** (see [ADR-0002](adr/0002-postgresql-as-system-of-record.md)),
@@ -29,6 +29,14 @@ erDiagram
     INTEGRATION_EVENTS ||--o{ WORKFLOW_EXECUTIONS : "triggers"
     WORKFLOWS ||--o{ WORKFLOW_EXECUTIONS : "executed as"
     WORKFLOW_EXECUTIONS ||--|{ SYNCHRONIZATION_JOBS : "one per step"
+    SYNCHRONIZATION_JOBS ||--o{ SYNCHRONIZATION_ATTEMPTS : "one per external call"
+    INTEGRATION_EVENTS ||--o{ DEAD_LETTER_EVENTS : "parked as"
+    SYNCHRONIZATION_JOBS |o--o{ DEAD_LETTER_EVENTS : "failed step"
+    USERS |o--o{ DEAD_LETTER_EVENTS : "replayed by"
+    ORGANIZATIONS ||--o{ IDEMPOTENCY_RECORDS : "scopes"
+    USERS ||--o{ IDEMPOTENCY_RECORDS : "sent"
+    CONNECTORS ||--o| CONNECTOR_CIRCUITS : "protected by"
+    CONNECTORS ||--o{ CONNECTOR_RATE_WINDOWS : "paced by"
 
     ORGANIZATIONS {
         uuid id PK
@@ -154,6 +162,7 @@ erDiagram
         varchar status
         int attempts
         timestamptz locked_until
+        timestamptz next_attempt_at
         timestamptz started_at
         timestamptz completed_at
         varchar last_error
@@ -190,6 +199,8 @@ erDiagram
         uuid employee_id FK
         varchar status
         int attempts
+        int attempts_at_last_replay
+        timestamptz next_attempt_at
         varchar external_id
         varchar error_category
         varchar error_message
@@ -197,6 +208,70 @@ erDiagram
         timestamptz finished_at
         timestamptz created_at
         timestamptz updated_at
+    }
+    SYNCHRONIZATION_ATTEMPTS {
+        uuid id PK
+        uuid organization_id FK
+        uuid job_id FK
+        int attempt_number
+        timestamptz started_at
+        timestamptz finished_at
+        float duration_ms
+        varchar outcome
+        varchar error_category
+        varchar error_code
+        int http_status
+        boolean retryable
+        float retry_after_seconds
+        timestamptz next_attempt_at
+    }
+    DEAD_LETTER_EVENTS {
+        uuid id PK
+        uuid organization_id FK
+        uuid event_id FK
+        varchar reason
+        uuid job_id FK
+        uuid connector_id
+        varchar operation
+        varchar error_category
+        varchar error_code
+        int http_status
+        varchar error_message
+        int attempts
+        int failed_steps
+        timestamptz dead_lettered_at
+        varchar status
+        timestamptz replayed_at
+        uuid replayed_by_user_id FK
+    }
+    IDEMPOTENCY_RECORDS {
+        uuid id PK
+        uuid organization_id FK
+        uuid user_id FK
+        varchar idempotency_key
+        varchar endpoint
+        varchar request_hash
+        int response_status
+        jsonb response_body
+        uuid resource_id
+        timestamptz created_at
+        timestamptz expires_at
+    }
+    CONNECTOR_CIRCUITS {
+        uuid connector_id PK
+        uuid organization_id FK
+        varchar state
+        int consecutive_failures
+        timestamptz opened_at
+        timestamptz open_until
+        timestamptz trial_started_at
+        timestamptz updated_at
+    }
+    CONNECTOR_RATE_WINDOWS {
+        uuid connector_id PK
+        timestamptz window_start PK
+        uuid organization_id FK
+        int calls
     }
 ```
 
@@ -479,9 +554,10 @@ step list changes.
 | employee_id | uuid | no | | Composite FK -> employees (organization_id, id) **ON DELETE CASCADE** |
 | payload | jsonb | no | | `{"type", "organization_id", "employee_id", "changes": {field: {old, new}}}` - may contain personal data; never logged; the API exposes field names only |
 | correlation_id | varchar(64) | yes | | Request ID of the API call that caused the event (NULL for CLI-created data) |
-| status | varchar(20) | no | `'pending'` | `pending` \| `processing` \| `completed` \| `failed` (`ck_integration_events_integration_event_status`) |
-| attempts | int | no | `0` | Number of claims (redeliveries and recoveries included) |
+| status | varchar(20) | no | `'pending'` | `pending` \| `processing` \| `retrying` \| `completed` \| `dead_letter` (`ck_integration_events_integration_event_status`; `failed` until migration `0007`) |
+| attempts | int | no | `0` | Number of claims (redeliveries, recoveries and retries included) |
 | locked_until | timestamptz | yes | | Worker lease while `processing`; deadline for being claimed once published |
+| next_attempt_at | timestamptz | yes | | While `retrying`: when the earliest waiting step is due |
 | started_at / completed_at | timestamptz | yes | | Last claim / finish |
 | last_error | varchar(1000) | yes | | Summary such as "1 of 1 workflow execution(s) failed." |
 | created_at / updated_at | timestamptz | no | `now()` | |
@@ -490,7 +566,10 @@ Indexes: `(organization_id, created_at)` for the newest-first list, `(organizati
 status)` for the status filter, `employee_id`, and the **partial** index
 `ix_integration_events_unfinished_locked_until` on `locked_until WHERE status IN
 ('pending', 'processing')` - small, because finished events drop out of it - used by the
-relay's recovery query. Events recorded in one transaction share `created_at` (PostgreSQL
+relay's recovery query, and the partial index `ix_integration_events_retrying_next_attempt_at`
+on `next_attempt_at WHERE status = 'retrying'` for the relay's "which retries are due?"
+query. `uq_integration_events_organization_id_id` is the target of the dead-letter queue's
+composite FK. Events recorded in one transaction share `created_at` (PostgreSQL
 `now()` is the transaction start); publication order comes from `outbox_events.id`.
 
 ### `outbox_events` - events waiting to be handed to the broker
@@ -534,20 +613,109 @@ Index: `(organization_id, workflow_id, created_at)` for execution history.
 | connector_id | uuid | no | | Copied from the step; composite FK -> connectors **ON DELETE CASCADE** |
 | operation | varchar(30) | no | | Copied from the step |
 | employee_id | uuid | no | | Composite FK -> employees **ON DELETE CASCADE** |
-| status | varchar(20) | no | `'pending'` | `pending` \| `running` \| `succeeded` \| `failed` \| `skipped` |
-| attempts | int | no | `0` | External calls attempted (Phase 6 adds per-attempt history) |
+| status | varchar(20) | no | `'pending'` | `pending` \| `running` \| `retrying` \| `succeeded` \| `failed` \| `skipped` |
+| attempts | int | no | `0` | External calls attempted, all rounds (history: `synchronization_attempts`) |
+| attempts_at_last_replay | int | no | `0` | `attempts` when last replayed; the retry budget counts attempts since then (`ck_synchronization_jobs_replay_offset_valid`: between 0 and `attempts`) |
+| next_attempt_at | timestamptz | yes | | While `retrying`: when the next attempt is due |
 | external_id | varchar(255) | yes | | ID in the external application, when known |
 | error_category / error_message | varchar(30) / varchar(500) | yes | | Normalized failure, or the reason a job was skipped |
 | started_at / finished_at | timestamptz | yes | | |
 | created_at / updated_at | timestamptz | no | `now()` | |
 
-Constraints: `uq_synchronization_jobs_execution_id_position`, operation and position checks.
-Indexes: `(organization_id, status)`, `connector_id`.
+Constraints: `uq_synchronization_jobs_execution_id_position`,
+`uq_synchronization_jobs_organization_id_id` (target of composite FKs), operation, position
+and replay-offset checks. Indexes: `(organization_id, status)`, `connector_id`.
 
-Retention (all event tables): nothing is deleted today except with the organization. Events,
-executions and jobs are the synchronization history that the audit log (Phase 7) and the
-dashboard (Phase 8) read. A retention job removing published outbox rows and old finished
-events after a configurable period is a documented future improvement.
+### `synchronization_attempts` - one row per external call made for a job (Phase 6)
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| id | uuid | no | PK |
+| organization_id, job_id | uuid | no | Composite FK -> synchronization_jobs **ON DELETE CASCADE** |
+| attempt_number | int | no | 1, 2, 3, ... (`ck_..._attempt_number_positive`); unique per job; continues across replays |
+| started_at | timestamptz | no | Written before the call |
+| finished_at, duration_ms | timestamptz, float | yes | Written after the call |
+| outcome | varchar(20) | yes | `succeeded` \| `failed` \| `skipped` \| `interrupted`; NULL while in progress |
+| error_category, error_code, error_message | varchar(30/50/500) | yes | Normalized failure |
+| http_status | int | yes | NULL for timeouts, network errors and circuit refusals |
+| retryable, retry_after_seconds | boolean, float | yes | Classification result |
+| next_attempt_at | timestamptz | yes | When this failure scheduled the next attempt |
+
+Index: `(organization_id, started_at)`.
+
+### `dead_letter_events` - events that failed for good (Phase 6)
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | no | app | PK |
+| organization_id, event_id | uuid | no | | Composite FK -> integration_events **ON DELETE CASCADE** |
+| reason | varchar(20) | no | | `retries_exhausted` \| `non_retryable` |
+| job_id | uuid | yes | | Composite FK -> synchronization_jobs **ON DELETE CASCADE**: the first step that failed |
+| connector_id, operation | uuid, varchar(30) | yes | | Copied from the job |
+| error_category, error_code, http_status, error_message | | yes | | **Copied** at dead-lettering time; a replay resets the job, the entry keeps the evidence |
+| attempts | int | no | `0` | Attempts of the failed step in this round |
+| failed_steps | int | no | `1` | Steps that failed for good in this round |
+| dead_lettered_at | timestamptz | no | | |
+| status | varchar(20) | no | `'open'` | `open` \| `replayed` |
+| replayed_at | timestamptz | yes | | |
+| replayed_by_user_id | uuid | yes | | FK -> users.id **ON DELETE SET NULL** (removing a user keeps the history) |
+| created_at / updated_at | timestamptz | no | `now()` | |
+
+Indexes: **partial unique** `uq_dead_letter_events_open_event_id` on `event_id WHERE status
+= 'open'` (at most one open entry per event; each replay round leaves its own entry);
+`(organization_id, status, dead_lettered_at)` for the queue view.
+
+### `idempotency_records` - stored responses for `Idempotency-Key` requests (Phase 6)
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| id | uuid | no | PK |
+| organization_id | uuid | no | FK -> organizations.id **ON DELETE CASCADE** |
+| user_id | uuid | no | FK -> users.id **ON DELETE CASCADE** |
+| idempotency_key | varchar(255) | no | As sent by the client |
+| endpoint | varchar(100) | no | e.g. `POST /employees` |
+| request_hash | varchar(64) | no | SHA-256 of endpoint + canonical validated body |
+| response_status, response_body | int, jsonb | no | The response as first returned |
+| resource_id | uuid | yes | e.g. the employee created |
+| created_at, expires_at | timestamptz | no | `expires_at` = created + `IDEMPOTENCY_TTL_HOURS` |
+
+Constraint: `uq_idempotency_records_organization_id_user_id_idempotency_key`. Index:
+`ix_idempotency_records_expires_at` (purge). Written in the same transaction as the employee
+([docs/13](13-idempotency.md)). Retention: deleted by `python -m app.cli purge-expired` once
+expired; ignored when expired even before that.
+
+### `connector_circuits` - circuit breaker state per connector (Phase 6)
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| connector_id | uuid | no | | PK; with organization_id composite FK -> connectors **ON DELETE CASCADE** |
+| organization_id | uuid | no | | |
+| state | varchar(20) | no | `'closed'` | `closed` \| `open` \| `half_open` |
+| consecutive_failures | int | no | `0` | Outage-type failures in a row |
+| opened_at, open_until | timestamptz | yes | | Set when the breaker opens |
+| trial_started_at | timestamptz | yes | | Half-open trial call in flight |
+| updated_at | timestamptz | no | `now()` | |
+
+Created on first use (`INSERT ... ON CONFLICT DO NOTHING`); locked with `FOR UPDATE` only
+while read or written, never during an external call.
+
+### `connector_rate_windows` - calls per connector per minute (Phase 6)
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| connector_id, window_start | uuid, timestamptz | no | Composite PK; window_start is the minute |
+| organization_id | uuid | no | With connector_id composite FK -> connectors **ON DELETE CASCADE** |
+| calls | int | no | Incremented atomically (`INSERT ... ON CONFLICT DO UPDATE ... RETURNING`) |
+
+Only written for connectors whose config sets `rate_limit_per_minute`; windows older than
+an hour are deleted as new ones are used.
+
+Retention (event, execution, job, attempt and dead-letter tables): nothing is deleted today
+except with the organization. They are the synchronization history that the audit log
+(Phase 7) and the dashboard (Phase 8) read. A retention job removing published outbox rows
+and old finished events after a configurable period is a documented future improvement.
+Expired `revoked_tokens` and `idempotency_records` rows are deleted by
+`python -m app.cli purge-expired`.
 
 ## 4. Migration strategy
 
@@ -592,9 +760,19 @@ Commands (from `backend/`): `alembic upgrade head`, `alembic downgrade -1`,
   RETURNING` (commit), plans executions (commit), and for each step commits "running"
   before the external call and the result after it. A crash therefore leaves a precise
   record of how far processing got ([docs/11](11-workflow-engine.md)).
-- **Relay locking.** The relay selects unpublished outbox rows and expired events with
-  `FOR UPDATE SKIP LOCKED`, so concurrent relays never block on, or double-publish, the
-  same rows in one round.
+- **Relay locking.** The relay selects unpublished outbox rows, expired events and due
+  retries with `FOR UPDATE SKIP LOCKED`, so concurrent relays never block on, or
+  double-publish, the same rows in one round.
+- **Attempts are written around the call.** The attempt row is committed before the
+  external call and completed after it; an attempt left open is closed as `interrupted`
+  by the next worker.
+- **Dead-lettering is part of the engine's final transaction** (event status and the
+  entry commit together). **Replay** locks the entry, then the event, and resets jobs,
+  requeues the event (outbox row) and closes the entry in one transaction.
+- **Idempotency records** are written in the same transaction as the employee they
+  describe (`before_commit` hook).
+- **Circuit-breaker and rate-limit rows** are changed in their own short transactions just
+  before and after an external call.
 
 ## 6. Test database
 

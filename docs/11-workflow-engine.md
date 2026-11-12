@@ -1,9 +1,10 @@
 # 11 - Workflow Engine
 
-> **Scope:** workflow configuration (Phase 5 Part 2) and the engine that executes workflows
-> for integration events (Part 3), as implemented. Steps run sequentially and are attempted
-> once per execution; retries with backoff, dead-lettering and replay are Phase 6. How
-> events reach the engine is in [docs/09](09-event-driven-architecture.md).
+> **Scope:** workflow configuration and the engine that executes workflows for integration
+> events, as implemented (Phase 5), including the retry, rate-limit and dead-letter steps
+> added in Phase 6. Steps run sequentially. The reliability mechanisms themselves are
+> described in [docs/12](12-reliability-and-retries.md) and [docs/13](13-idempotency.md);
+> how events reach the engine is in [docs/09](09-event-driven-architecture.md).
 
 ## 1. Concepts
 
@@ -13,6 +14,7 @@
 | **Step** | `workflow_steps` | One connector operation at a position: "create the user in *this* Slack connector" |
 | **Execution** | `workflow_executions` | One run of one workflow for one event. Exactly one per (event, workflow) |
 | **Synchronization job** | `synchronization_jobs` | One step of one execution, with its own status, attempts, external ID and error |
+| **Attempt** | `synchronization_attempts` | One external call made for a job (Phase 6): timing, outcome, normalized error |
 
 Example onboarding workflow (trigger `employee.created`):
 
@@ -66,18 +68,23 @@ stateDiagram-v2
     direction LR
     state "Synchronization job" as J {
         [*] --> pending
-        pending --> running: external call starts (committed first)
+        pending --> running: external call starts (attempt row committed first)
         running --> succeeded: operation done (or already done earlier)
-        running --> failed: external error, or configuration problem
+        running --> retrying: retryable error, attempts left
+        retrying --> running: next_attempt_at reached
+        pending --> retrying: over the connector's rate limit (deferred, no attempt used)
+        running --> failed: non-retryable error, configuration problem, or attempts used up
         running --> skipped: operation does not apply
         pending --> skipped: an earlier job in this execution failed
+        failed --> pending: replay from the dead-letter queue
     }
 ```
 
 | Job outcome | When | Example `error_category` / `error_message` |
 |---|---|---|
 | `succeeded` | The connector call worked, or `create_user` finds the employee already linked (done by an earlier, interrupted run) | external ID stored |
-| `failed` | The external application returned an error | category from the connector framework: `server`, `rate_limited`, `timeout`, `authentication`, ... |
+| `retrying` | A retryable error (`server`, `timeout`, `network`, `rate_limited`, `in_progress`, `circuit_open`) with attempts left; or deferred by the connector's rate limit (`throttled`) | `next_attempt_at` set ([docs/12](12-reliability-and-retries.md#3-retries-exponential-backoff-with-jitter)) |
+| `failed` | A non-retryable error (`authentication`, `authorization`, `validation`, `conflict`, ...), or retryable errors until the attempts ran out | category from the connector framework; "Gave up after N attempts: ..." when exhausted |
 | `failed` | Configuration problem: disconnected connector, unsupported adapter version | `configuration` |
 | `skipped` | `update_user` / `deactivate_user` for an employee who has no account in that application | "The employee has no account in this application." |
 | `skipped` | `create_user` for an employee who is terminated by the time the step runs | "Accounts are not created for terminated employees." |
@@ -97,7 +104,7 @@ sequenceDiagram
     participant X as External application
 
     T->>P: process(event_id) (log context = correlation ID)
-    P->>DB: UPDATE event SET status=processing, locked_until=now+lease, attempts+1<br/>WHERE id=? AND (pending OR (processing AND lease expired)) RETURNING id
+    P->>DB: UPDATE event SET status=processing, locked_until=now+lease, attempts+1<br/>WHERE id=? AND (pending OR (processing AND lease expired)<br/>OR (retrying AND next attempt due)) RETURNING id
     alt nothing claimed (finished, or owned by a live worker)
         P-->>T: skipped
     end
@@ -108,17 +115,22 @@ sequenceDiagram
     loop each running execution, each job in position order
         alt job already succeeded or skipped
             P->>P: skip (resume after a crash)
+        else job retrying and not due yet
+            P->>P: stop this execution (sequential steps wait)
+        else over the connector's rate limit
+            P->>DB: job=retrying (throttled), next minute, no attempt used, COMMIT
         else
-            P->>DB: renew lease, job=running, attempts+1, COMMIT
-            P->>CS: run_operation(organization, connector, operation, employee)
+            P->>DB: close interrupted attempts, renew lease, job=running,<br/>attempts+1, INSERT attempt (open), COMMIT
+            P->>CS: run_operation(..., idempotency_key = syncforge-job-<id>)
             CS->>DB: current employee, account link, preconditions
+            CS->>DB: circuit breaker check (may refuse: circuit_open)
             CS->>X: create_user / update_user / deactivate_user (no DB lock held)
-            CS->>DB: store or update the account link, COMMIT
+            CS->>DB: record result in the breaker; store or update the account link, COMMIT
             CS-->>P: result, or error (normalized)
-            P->>DB: job=succeeded / failed / skipped, COMMIT
+            P->>DB: close attempt; job=succeeded / skipped / retrying (next_attempt_at) / failed, COMMIT
         end
     end
-    P->>DB: executions succeeded/failed, event completed/failed, locked_until=NULL, COMMIT
+    P->>DB: event completed / retrying (earliest next_attempt_at) / dead_letter<br/>(+ dead_letter_events entry), locked_until=NULL, COMMIT
 ```
 
 Key properties:
@@ -127,7 +139,9 @@ Key properties:
   execution per (event, workflow); a redelivered or recovered event resumes the existing one.
   If two workers race to plan it, the loser's insert fails and it loads the winner's.
 - **No repeated work.** Succeeded and skipped jobs are never run again. A job recorded as
-  `failed` before a crash stays failed (Phase 6 decides about retrying it).
+  `failed` stays failed until someone replays its dead-letter entry.
+- **Bounded retries.** A job is attempted at most `RETRY_MAX_ATTEMPTS` times per round;
+  every attempt is recorded ([docs/12](12-reliability-and-retries.md)).
 - **No locks across external calls.** The job is marked `running` and committed before the
   call; the result is written afterwards in a short transaction.
 - **One code path for manual and automatic operations.** The engine calls the same
@@ -141,10 +155,12 @@ Key properties:
 
 | Failure | Effect | Recovery |
 |---|---|---|
-| External application returns an error | That job `failed` with the normalized category; later jobs `skipped`; execution `failed`; event `failed` | Phase 6: retry with backoff, dead-letter, replay |
-| External application is slow | The connector's read timeout fires (default 10 s); job `failed`, category `timeout` | Phase 6 |
+| External application returns a retryable error | Job `retrying`; later jobs wait; event `retrying` | Retried with backoff; after the last attempt as below |
+| External application returns a non-retryable error, or retries run out | That job `failed`; later jobs `skipped`; execution `failed`; event `dead_letter` with an entry | Fix the cause, then replay the entry |
+| External application is slow | Read timeout (10 s) or operation deadline (30 s) fires; category `timeout`, retried | Retries; if the application acted anyway, the idempotency key prevents a duplicate |
+| External application is down | After 5 consecutive outage failures its circuit opens; calls refused without a request | One trial call after the open period; replay what dead-lettered meanwhile |
 | Worker crashes between steps | Event stays `processing`; lease expires; relay resets it to `pending` and re-sends | Next worker resumes from the first unfinished job |
-| Worker crashes during a call, before the account link was stored | Job stays `running`; resumed like above; the call is made again | Usually fine (the interrupted request was cancelled); if the external app had already created the account, `create_user` gets "already exists" and the job fails - Phase 6 adds idempotency keys |
+| Worker crashes during a call, before the account link was stored | Job stays `running` with an open attempt; resumed like above; the open attempt is closed as `interrupted`; the call is made again with the same idempotency key | An application that honours the key returns the account it already created (the mocks do); one that does not answers "already exists" - a visible dead-letter entry, not a duplicate ([docs/13](13-idempotency.md)) |
 | Worker crashes after the link was stored, before the job was marked | Job stays `running`; resumed | `create_user` finds the link and is marked `succeeded` with that external ID - no second account |
 | Database unavailable | Task raises; message not acknowledged; event stays `processing` | Lease expiry and recovery once the database is back |
 | Unexpected exception in the engine | Logged by Celery; event stays `processing` | Lease expiry and recovery (and the bug shows up in the logs) |
@@ -164,11 +180,15 @@ others). Parallel execution could be introduced later without changing the data 
 
 ## 7. Monitoring the engine
 
-- `GET .../events?event_status=failed` - events that need attention;
-  `GET .../events/{id}` - every execution and job of one event, with errors.
+- `GET .../dead-letter-events?entry_status=open` - work that needs attention, with the
+  preserved error; `GET .../events?event_status=retrying` - work waiting for a retry.
+- `GET .../events/{id}` - every execution and job of one event, with errors;
+  `GET .../events/{id}/attempts` - every external call made for it.
 - `GET .../workflows/{id}/executions` - history of one workflow, newest first.
 - Worker logs: `event processing started`, `synchronization job finished` (position,
-  operation, connector, status, error category), `event processing finished` (outcome) -
+  operation, connector, status, error category, attempt, next attempt time),
+  `synchronization job deferred by rate limit`, `event dead-lettered`, `circuit opened` /
+  `circuit closed`, `event processing finished` (outcome) -
   IDs only, never names or emails (`test_engine_logs_carry_ids_but_no_personal_data`), all
   with the originating request ID.
 
@@ -181,7 +201,7 @@ others). Parallel execution could be introduced later without changing the data 
 | Onboarding creates accounts in all three applications | `test_onboarding_creates_accounts_in_every_application` |
 | Offboarding deactivates them | `test_offboarding_deactivates_the_accounts` |
 | No active workflow -> completed, nothing to do; inactive workflows ignored | `test_events_without_an_active_workflow_complete_with_nothing_to_do` |
-| Google returns 503 -> job failed, rest skipped, event failed | `test_a_failed_step_fails_the_execution_and_skips_the_rest` |
+| Google returns 400 (not retryable) -> job failed, rest skipped, event dead-lettered | `test_a_failed_step_fails_the_execution_and_skips_the_rest` |
 | Not linked -> skipped, not failed | `test_steps_that_do_not_apply_are_skipped_not_failed` |
 | Disconnected connector -> configuration failure | `test_a_disconnected_connector_fails_its_step_as_configuration` |
 | Duplicate delivery -> skipped, nothing created twice | `test_duplicate_delivery_is_skipped_and_creates_nothing_twice` |
@@ -191,4 +211,6 @@ others). Parallel execution could be introduced later without changing the data 
 | Logs carry IDs, no personal data | `test_engine_logs_carry_ids_but_no_personal_data` |
 
 Configuration and API: `test_workflows_api.py`, `test_events_api.py`,
-`test_workflow_models.py`.
+`test_workflow_models.py`. Retries, dead-letter, idempotency, circuit breaker and rate
+limits in the engine: `test_retries.py`, `test_dead_letters.py`, `test_idempotency.py`,
+`test_circuit_breaker.py` ([docs/12, section 12](12-reliability-and-retries.md#12-tests)).

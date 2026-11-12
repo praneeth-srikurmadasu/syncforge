@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -52,3 +52,9 @@ class RevokedTokenRepository:
             .on_conflict_do_nothing(index_elements=[RevokedToken.jti])
         )
         self.session.execute(statement)
+
+    def purge_expired(self, now: datetime) -> int:
+        """Delete denylist rows of tokens that have expired anyway (a token past its
+        `exp` is rejected by signature validation, revoked or not)."""
+        result = self.session.execute(delete(RevokedToken).where(RevokedToken.expires_at <= now))
+        return result.rowcount or 0

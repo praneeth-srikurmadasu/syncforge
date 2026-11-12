@@ -1,9 +1,11 @@
 # 09 - Event-Driven Architecture
 
-> **Scope:** the event pipeline implemented in Phase 5: transactional outbox, outbox
-> relay, Redis, Celery workers and the worker lease. Retries with backoff, dead-lettering
-> and replay are Phase 6 and are not described as working here. The workflow engine that
-> runs inside the worker is in [docs/11](11-workflow-engine.md).
+> **Scope:** the event pipeline as implemented: transactional outbox, outbox relay, Redis,
+> Celery workers and the worker lease (Phase 5), with the retry and dead-letter states added
+> in Phase 6. Retries, the dead-letter queue, replay, the circuit breaker and rate limits
+> are described in [docs/12](12-reliability-and-retries.md), idempotency in
+> [docs/13](13-idempotency.md). The workflow engine that runs inside the worker is in
+> [docs/11](11-workflow-engine.md).
 
 ## 1. Why events, and why asynchronous
 
@@ -42,6 +44,7 @@ flowchart LR
     relay -- "1. read unpublished rows<br/>(FOR UPDATE SKIP LOCKED)" --> ob
     relay -- "2. publish event ID" --> redis
     relay -- "3. recover events whose<br/>lease expired" --> ev
+    relay -- "4. dispatch retries<br/>that are due" --> ev
     redis -- "deliver (at least once)" --> worker
     worker -- "claim with lease,<br/>record every step" --> ev
     worker --> ex
@@ -68,22 +71,26 @@ stateDiagram-v2
     [*] --> pending: change committed (event + outbox row)
     pending --> processing: worker claims it (lease set)
     processing --> completed: all matching workflows succeeded, or none matched
-    processing --> failed: a workflow step failed
+    processing --> retrying: a step failed retryably and has attempts left
+    retrying --> pending: next attempt due, relay re-dispatches
+    retrying --> processing: next attempt due, a worker claims it
+    processing --> dead_letter: a step failed for good (dead-letter entry opened)
+    dead_letter --> pending: authorized replay (outbox row written)
     processing --> pending: lease expired, relay re-dispatches (worker presumed dead)
     pending --> pending: lease expired, relay re-dispatches (message presumed lost)
     completed --> [*]
-    failed --> [*]
 ```
 
-| Status | Meaning | `locked_until` |
-|---|---|---|
-| `pending` | Recorded, not claimed. Published or about to be. | `NULL` until published; then the time by which a worker should have claimed it |
-| `processing` | Owned by one worker | end of the worker's lease, renewed before every step |
-| `completed` | All matching workflows succeeded, or none matched | `NULL` |
-| `failed` | At least one workflow execution failed (details on its jobs) | `NULL` |
+| Status | Meaning | `locked_until` | `next_attempt_at` |
+|---|---|---|---|
+| `pending` | Recorded, not claimed. Published or about to be. | `NULL` until published; then the time by which a worker should have claimed it | `NULL` |
+| `processing` | Owned by one worker | end of the worker's lease, renewed before every step | `NULL` |
+| `retrying` | A step waits for its next attempt; no worker holds it | `NULL` | earliest waiting step's next attempt |
+| `completed` | All matching workflows succeeded, or none matched | `NULL` | `NULL` |
+| `dead_letter` | A step failed for good; details in its `dead_letter_events` entry ([docs/12](12-reliability-and-retries.md#5-the-dead-letter-queue)) | `NULL` | `NULL` |
 
-`attempts` counts claims, so a value above 1 shows the event was redelivered or recovered.
-Phase 6 adds retry and dead-letter states.
+`attempts` counts claims, so a value above 1 shows the event was redelivered, recovered or
+retried. Phase 5's `failed` status was replaced by `dead_letter` in migration `0007`.
 
 ## 4. Transactional outbox
 
@@ -133,7 +140,7 @@ Full decision record: [ADR-0012](adr/0012-transactional-outbox.md).
 
 ## 5. The outbox relay
 
-`OutboxRelay.run_once()` does two things per poll (default every 1 s):
+`OutboxRelay.run_once()` does three things per poll (default every 1 s):
 
 1. **Publish.** Up to `OUTBOX_BATCH_SIZE` unpublished rows, oldest first (`outbox_events.id`
    is an identity column, so this is commit order within the relay's view). Rows are locked
@@ -147,6 +154,9 @@ Full decision record: [ADR-0012](adr/0012-transactional-outbox.md).
      claim it, then publishes it again;
    - a `pending` event with an expired deadline was published but never claimed - the message
      was lost (for example Redis restarted; it runs without persistence on purpose).
+3. **Dispatch due retries** (Phase 6). `retrying` events whose `next_attempt_at` has
+   passed are published again and set to `pending` (`FOR UPDATE SKIP LOCKED`). A retry is
+   data in the database, not a sleeping worker ([docs/12, section 3](12-reliability-and-retries.md#3-retries-exponential-backoff-with-jitter)).
 
 A relay crash between "published" and "marked published" means that row is published again
 on the next poll. That is intended: delivery is at-least-once, and the worker's claim step
@@ -193,14 +203,17 @@ Why Redis and Celery rather than alternatives: [ADR-0010](adr/0010-redis-and-cel
 | Every event is eventually delivered to a worker, if Redis and a worker eventually run | Outbox relay publishes until it succeeds; recovery re-sends lost or abandoned events |
 | An event delivered twice does not run its workflows twice | Atomic claim; one execution per (event, workflow) by unique constraint; finished steps are skipped |
 | A worker crash does not lose or repeat finished work | Lease expiry, recovery to `pending`, resume from the first unfinished step |
+| A transient external failure does not fail the event | Retries with backoff ([docs/12](12-reliability-and-retries.md)) |
+| A step that fails for good is kept, visible and recoverable | Dead-letter queue and replay ([docs/12](12-reliability-and-retries.md#5-the-dead-letter-queue)) |
+| A repeated `create_user` does not create a second account | Account link, plus idempotency keys where the application honours them ([docs/13](13-idempotency.md)) |
 
 **Not promised: exactly-once delivery.** A message can arrive more than once and a step can
 be interrupted mid-call; the system is designed around **at-least-once delivery with
-idempotent processing**, never exactly-once. One known gap remains for Phase 6: if a worker
-dies after an external API created an account but before SyncForge stored the account link
-(a window of one database commit), the resumed step calls `create_user` again and the
-external application answers "already exists"; Phase 5 records that step as failed. Phase 6
-adds idempotency keys towards external applications and replay.
+idempotent processing**, never exactly-once. The crash window that Phase 5 left open (an
+external account created, SyncForge's link not yet stored) is closed by idempotency keys
+for applications that honour them - the three mock services do; for the real Slack and
+Google APIs, which do not document such a header, the window produces a visible conflict
+and a dead-letter entry, not a duplicate ([docs/13, section 3](13-idempotency.md#3-outgoing-idempotency-keys-on-external-create-calls)).
 
 **Ordering.** One worker processes messages in publication order. With several workers, two
 events for the same employee could run concurrently; this is acceptable in Phase 5 because
@@ -231,6 +244,8 @@ is now and applies the connector operation to that. Consequences:
 | `OUTBOX_BATCH_SIZE` | `100` | Rows published (and events recovered) per poll |
 | `OUTBOX_POLL_INTERVAL_SECONDS` | `1` | Pause between relay polls |
 
+Retry, circuit-breaker and timeout settings: [docs/12, section 11](12-reliability-and-retries.md#11-configuration).
+
 ## 10. Running it locally
 
 From the repository root, one terminal each (Windows; see the README for the full setup):
@@ -252,3 +267,5 @@ Set-Location backend; & .\.venv\Scripts\python.exe -m app.cli outbox-relay
 | Relay recovery and engine together | `test_relay_recovery_hands_a_crashed_workers_event_to_the_next_worker` |
 | Real Celery worker: relay -> broker -> worker -> engine -> mocks, then duplicate delivery skipped | `test_celery_worker.py` (in-memory broker, worker thread) |
 | Claim, duplicate delivery, live lease, crash resume | `test_workflow_engine.py` |
+| Due retries dispatched by the relay; a due retry claimed while the relay holds the row | `test_retries.py`, `test_concurrency.py` |
+| Dead-letter and replay through the outbox | `test_dead_letters.py` |

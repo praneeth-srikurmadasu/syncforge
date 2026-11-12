@@ -4,6 +4,67 @@ All notable changes to SyncForge are recorded here.
 
 ## [Unreleased]
 
+### Phase 6 - Reliability engine and failure recovery (complete)
+
+#### Added
+- Retries: `RetryPolicy` with exponential backoff (2, 4, 8, ... s), proportional jitter
+  (+/-20 %), `Retry-After` honoured (never earlier, capped) and a bounded number of attempts
+  (default 5, first included); only `server`, `timeout`, `network`, `rate_limited`,
+  `in_progress` and `circuit_open` failures are retried. Settings `RETRY_MAX_ATTEMPTS`,
+  `RETRY_BASE_DELAY_SECONDS`, `RETRY_MAX_DELAY_SECONDS`, `RETRY_JITTER_RATIO`.
+- `retrying` status for events and jobs with `next_attempt_at`; the outbox relay dispatches
+  due retries; later steps of an execution wait (migration `0006`).
+- `synchronization_attempts`: one row per external call, opened before and closed after
+  it; open attempts are closed as `interrupted` on resume. `GET .../events/{id}/attempts`.
+- Dead-letter queue: events that fail for good end in `dead_letter` with a
+  `dead_letter_events` entry that copies the error (reason `retries_exhausted` or
+  `non_retryable`); `GET .../dead-letter-events` (filters `entry_status`, `connector_id`),
+  `GET .../dead-letter-events/{id}` (with the event and every round),
+  `POST .../dead-letter-events/{id}/replay` (`202`) (migration `0007`).
+- Replay resets only failed steps and those skipped because of them, gives each a fresh
+  retry budget (`attempts_at_last_replay`), and requeues the event through the outbox in
+  one transaction; row locks make simultaneous replays safe; `409 already_replayed`,
+  `409 workflow_inactive`.
+- Permission `events:replay` (Integration Manager, Organization Admin).
+- Outgoing idempotency keys: `Idempotency-Key: syncforge-job-<job id>` on `create_user`,
+  identical across attempts and replays. The mock services honour the header (stored
+  response with `Idempotent-Replayed: true`, `422` on key reuse, `409
+  idempotency_key_in_use` while running); new retryable category `in_progress`. A mock
+  timeout fault now still executes the request after the delay.
+- Incoming idempotency: optional `Idempotency-Key` on `POST .../employees`; the response is
+  stored in `idempotency_records` in the same transaction as the employee; same key and body
+  replays it, a different body is `422 idempotency_key_reused`; keys scoped per user;
+  setting `IDEMPOTENCY_TTL_HOURS` (migration `0008`).
+- Circuit breaker per connector, state shared in `connector_circuits` (closed / open /
+  half-open with one trial call); refused calls fail with retryable `circuit_open`; a
+  successful connection test closes it; connector responses include `circuit`. Settings
+  `CIRCUIT_FAILURE_THRESHOLD`, `CIRCUIT_OPEN_SECONDS` (migration `0009`).
+- Per-connector rate limit: optional `rate_limit_per_minute` in connector config, counted
+  per minute in `connector_rate_windows` across all workers; jobs over the limit are
+  deferred to the next minute without using an attempt (job `error_category` `throttled`).
+- Operation deadline: `CONNECTOR_OPERATION_TIMEOUT_SECONDS` (default 30) caps one
+  operation across all of its requests; past it, `operation_timeout` (retryable).
+- `python -m app.cli purge-expired`: deletes expired revoked tokens and idempotency records.
+- `infrastructure/scripts/demo_reliability.py`: five live failure scenarios against a
+  running stack.
+- 71 new tests (467 total), including two-session concurrency tests for a due retry
+  claimed while the relay holds the row and for simultaneous replays.
+- Documentation: reliability and retries (docs/12, new), idempotency (docs/13, new),
+  ADR-0013 (retries), ADR-0014 (dead-letter queue and replay), ADR-0015 (idempotency keys),
+  ADR-0016 (circuit breaker and rate limits); architecture, database, API, events,
+  connector, workflow engine, security, troubleshooting and README updated.
+
+#### Changed
+- Event status `failed` is replaced by `dead_letter`; migration `0007` moves existing failed
+  events into the queue with entries built from their first failed step.
+- A step that fails with a retryable error is retried instead of failing the event.
+- `create_user` on connectors accepts an optional `idempotency_key`.
+
+#### Fixed
+- A worker could skip a due retry when it received the message before the relay committed
+  `pending` (READ COMMITTED); due `retrying` events are now claimable (found in the live
+  retry run, covered by a concurrency test).
+
 ### Phase 5 - Workflow engine and asynchronous event processing (complete)
 
 #### Added

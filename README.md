@@ -6,7 +6,7 @@ SyncForge keeps employee data consistent across HR, Slack, Google Workspace and 
 turning workforce changes (hire, transfer, termination) into reliably processed, audited
 synchronization events.
 
-> **Status: Phase 5 of 10 complete - workflow engine and event processing. Next: Phase 6, reliability engine (retries, idempotency keys, dead-letter queue, circuit breaker).**
+> **Status: Phase 6 of 10 complete - reliability engine (retries, dead-letter queue and replay, idempotency keys, circuit breaker, rate limits). Next: Phase 7, data integrity, conflict resolution and audit logging.**
 > See [`PROJECT_STATUS.md`](PROJECT_STATUS.md) for exactly what works today.
 
 ## What works today
@@ -40,9 +40,19 @@ synchronization events.
   never creates accounts for someone already terminated
 - Events and workflow execution history with per-step status through the API, traceable in
   the logs by the originating request ID
-- 396 automated tests against a real PostgreSQL database, including two-session
-  concurrency tests, connector tests over real HTTP against the mocks, and a real Celery
-  worker
+- **Reliability engine**: failures are classified; temporary ones (5xx, timeouts, 429) are
+  retried with exponential backoff and jitter, honouring `Retry-After`, with a bounded
+  number of attempts and every external call recorded in an attempt history
+- **Dead-letter queue**: work that fails for good is parked with its error preserved and
+  can be replayed (by Integration Managers and Admins) - only the failed steps run again
+- **Idempotency keys** in both directions: retried external creates do not create a
+  second account (with APIs that honour the key, as the mocks do), and a client resending
+  `POST /employees` with the same `Idempotency-Key` gets the first response back
+- **Circuit breaker** per connector shared by all workers, optional per-connector **rate
+  limits**, and a time limit per operation
+- 467 automated tests against a real PostgreSQL database, including two-session
+  concurrency tests, connector tests over real HTTP against the mocks, a real Celery
+  worker, and failure simulations (outages, 429, timeouts, crashes, duplicates)
 
 ## Tech stack
 
@@ -119,6 +129,16 @@ employee: the event appears under `GET .../events` and is processed within about
 How it works: [docs/09](docs/09-event-driven-architecture.md),
 [docs/11](docs/11-workflow-engine.md).
 
+With these four processes and Redis running, the reliability demo injects failures into
+the mocks and shows retries, idempotency, the dead-letter queue and replay, the circuit
+breaker and a rate limit (about two and a half minutes;
+[docs/12, section 10](docs/12-reliability-and-retries.md#10-seeing-it-work)):
+
+```powershell
+Set-Location "$HOME\Projects\syncforge"
+& "$HOME\Projects\syncforge\backend\.venv\Scripts\python.exe" infrastructure\scripts\demo_reliability.py
+```
+
 Optional - load demo data. Register a user first (for example through `/docs`), then:
 
 ```powershell
@@ -127,6 +147,12 @@ python -m app.cli seed-demo --admin-email you@example.com
 
 This creates the "Acme Demo" organization with 5 departments and 20 fictional employees, and
 makes you its Organization Admin.
+
+Maintenance - delete expired revoked tokens and idempotency records (schedule it daily):
+
+```powershell
+python -m app.cli purge-expired
+```
 
 Optional - create a platform Super Admin (prompts for a password):
 
@@ -162,15 +188,16 @@ backend/
     connectors/     connector interface, registry, HTTP client, Slack/Google/payroll adapters
     events/         lifecycle detection, transactional outbox, outbox relay
     workflows/      workflow engine (claim, plan, run steps, record outcomes)
+    reliability/    retry policy, dead letter, circuit breaker, rate limit, idempotency
     workers/        Celery app and tasks
-    cli.py          operator commands (create-superadmin, seed-demo, outbox-relay)
+    cli.py          operator commands (create-superadmin, seed-demo, outbox-relay, purge-expired)
     seed.py         demo data
-  migrations/       Alembic migrations (0001-0005)
+  migrations/       Alembic migrations (0001-0009)
   tests/            pytest suite
 docs/               architecture, database, API, security, ADRs
 frontend/           Angular app (Phase 8)
 mock-services/      mock Slack / Google Workspace / payroll APIs (simulated, failure injection)
-infrastructure/     Dockerfiles and scripts (later phases)
+infrastructure/     scripts (scripts/demo_reliability.py); Dockerfiles in Phase 10
 docker-compose.yml  local PostgreSQL and Redis (more services added per phase)
 ```
 
@@ -185,7 +212,9 @@ docker-compose.yml  local PostgreSQL and Redis (more services added per phase)
 | [Event-driven architecture](docs/09-event-driven-architecture.md) | Transactional outbox, relay, Redis, Celery workers, leases, delivery guarantees |
 | [Connector framework](docs/10-connector-framework.md) | Interface, adapters, real vs simulated, error normalization, OAuth lifecycle, credential security, adding a connector |
 | [Workflow engine](docs/11-workflow-engine.md) | Workflows, executions, job states, processing sequence, failure boundaries |
+| [Reliability and retries](docs/12-reliability-and-retries.md) | Failure classification, backoff and jitter, attempt history, dead-letter queue and replay, circuit breaker, rate limits, timeouts, demo |
+| [Idempotency](docs/13-idempotency.md) | Where duplicates could come from and what stops each; idempotency keys outgoing and incoming |
 | [Security design](docs/15-security-design.md) | Auth flow, JWT lifecycle, passwords, secrets, roles, tenant isolation, connector credentials, SSRF |
 | [Troubleshooting](docs/21-troubleshooting.md) | Investigating failed requests and synchronizations, connector, worker, test and Windows issues |
-| [Architecture decisions](docs/adr/) | ADR-0001 to ADR-0012 |
+| [Architecture decisions](docs/adr/) | ADR-0001 to ADR-0016 |
 | [Project plan](PROJECT_PLAN.md), [Status](PROJECT_STATUS.md), [Changelog](CHANGELOG.md) | Progress tracking |

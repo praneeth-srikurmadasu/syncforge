@@ -1,6 +1,6 @@
 # 21 - Troubleshooting
 
-> **Scope:** problems actually met while building and running SyncForge (Phases 1-5), with
+> **Scope:** problems actually met while building and running SyncForge (Phases 1-6), with
 > their causes and fixes. Later phases add their own entries.
 
 ## Investigating a failed request
@@ -11,12 +11,20 @@ including connector calls (`syncforge.connectors`) and the outbound HTTP request
 
 ## Investigating a failed synchronization
 
-1. `GET .../events?event_status=failed` lists events that need attention.
+1. `GET .../dead-letter-events?entry_status=open` lists work that failed for good, with the
+   preserved error (connector, operation, category, HTTP status, message, attempts, reason).
+   `GET .../events?event_status=retrying` lists work that is still being retried.
 2. `GET .../events/{event_id}` shows each workflow execution and job: which step failed,
-   its `error_category` and `error_message`, and `attempts` (above 1 = redelivered/recovered).
+   its `error_category`, `error_message` and `next_attempt_at`.
+   `GET .../events/{event_id}/attempts` lists every external call: timing, outcome, HTTP
+   status, whether it was retryable, and when the next attempt was scheduled.
 3. Search the worker log for the event's `correlation_id` (the request ID of the API call
    that caused it) or its `event_id`: `event processing started`, one
-   `synchronization job finished` per step, `event processing finished`.
+   `synchronization job finished` per attempt, `event dead-lettered`,
+   `event processing finished`. `circuit opened` / `circuit closed` lines carry the
+   connector ID.
+4. Fix the cause (credentials, permissions, the application's outage), then replay the
+   entry (`POST .../dead-letter-events/{id}/replay`, Integration Manager or Org Admin).
 
 ## Events and workers
 
@@ -31,8 +39,20 @@ including connector calls (`syncforge.connectors`) and the outbound HTTP request
 | An event stays `processing` after a worker was killed | Expected until its lease expires (`WORKER_LEASE_SECONDS`, default 300 s) | Wait: the relay logs `event re-dispatched after lease expiry` and the next worker resumes it. For demos, set `$env:WORKER_LEASE_SECONDS = "20"` in the worker and relay terminals |
 | A hire's `create_user` steps are all `skipped` | The employee was terminated before the worker processed the hire; workers act on current state | Expected and safe: no access is created for terminated employees (docs/09, section 8) |
 | `deactivate_user` steps are `skipped` | The employee never had an account in that application | Expected |
-| A step `failed` with category `configuration` | The connector is disconnected, or its stored version is no longer supported | Reconnect it (`PATCH .../connectors/{id}` with credentials), then retry in Phase 6 |
+| A step `failed` with category `configuration` | The connector is disconnected, or its stored version is no longer supported | Reconnect it (`PATCH .../connectors/{id}` with credentials), then replay the dead-letter entry |
 | A workflow cannot be activated (`409 connector_disconnected`) | One of its steps uses a disconnected connector | Reconnect the connector or change the step |
+
+## Retries, dead-letter queue, circuit breaker
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| An event stays `retrying` for a while | A step failed with a retryable error and waits for `next_attempt_at` (2, 4, 8, 16 s by default; longer with `Retry-After` or an open circuit) | Expected. `GET .../events/{id}/attempts` shows each attempt. The relay must be running: it dispatches due retries |
+| Steps fail with `circuit_open` and no HTTP status | That connector's circuit breaker is open after repeated outage failures; no request is sent | Wait for the open period (`CIRCUIT_OPEN_SECONDS`, 60 s) - one trial call then decides - or, once the application is back, run a connection test: success closes the breaker. `GET .../connectors/{id}` shows `circuit` |
+| A job shows `error_category: throttled` and attempts `0` | The connector's `rate_limit_per_minute` is reached; the job waits for the next minute without using an attempt | Expected; raise or remove the limit in the connector config if it is too low |
+| `409 already_replayed` | The entry was replayed already (by you or someone else) | Follow the event; if it failed again, a new open entry exists |
+| `409 workflow_inactive` on replay | None of the workflows that failed is active | Fix the configuration, activate the workflow, replay again |
+| A step fails with `in_progress` (409 `idempotency_key_in_use`) | An earlier attempt with the same idempotency key is still running at the application (it timed out on our side) | Expected and retryable: a later attempt receives the original result |
+| The demo script times out waiting for events | The worker or the relay is not running, or a mock fault is still queued | Start them (docs/09, section 10); `DELETE http://127.0.0.1:910x/_mock/faults` |
 
 ## API calls from PowerShell
 

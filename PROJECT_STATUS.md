@@ -1,6 +1,6 @@
 # SyncForge - Project Status
 
-**Current phase:** 5 complete - awaiting approval to start Phase 6 (Reliability engine and failure recovery)
+**Current phase:** 6 complete - awaiting your verification of Part 5 and approval to start Phase 7 (Data integrity, conflict resolution and audit logging)
 **Last updated:** 2026-11-12
 
 | Phase | Status |
@@ -10,8 +10,62 @@
 | 3 - Employee management | Complete |
 | 4 - Connector framework and mock services | Complete |
 | 5 - Workflow engine and event processing | Complete |
-| 6 - Reliability engine and failure recovery | Next (awaiting approval) |
-| 7-10 | Not started |
+| 6 - Reliability engine and failure recovery | Complete (Part 5 delivered; Windows verification of Part 5 pending) |
+| 7 - Data integrity, conflicts, audit logging | Next (awaiting approval) |
+| 8-10 | Not started |
+
+## Phase 6 progress
+
+| Part | Scope | Status | Verified on |
+|---|---|---|---|
+| 1 | Retry policy (exponential backoff, proportional jitter, `Retry-After`, bounded attempts); `retrying` statuses and `next_attempt_at`; `synchronization_attempts` history; relay dispatches due retries; `GET .../events/{id}/attempts` (migration `0006`) | Done | Windows 11, Python 3.13.17, Docker PostgreSQL 16, Redis 7 |
+| 2 | Dead-letter queue (`dead_letter` status, `dead_letter_events` with the copied error), authorized replay of only the failed steps with a fresh retry budget, `events:replay` permission (migration `0007`) | Done | same |
+| 3 | Idempotency keys: `Idempotency-Key: syncforge-job-<id>` on external creates, honoured by the mocks (`in_progress` retryable); `Idempotency-Key` on `POST /employees` stored atomically in `idempotency_records` (migration `0008`) | Done | same |
+| 4 | Circuit breaker per connector (closed / open / half-open, shared in PostgreSQL), `rate_limit_per_minute` per connector (deferral without using an attempt), operation deadline across requests (migration `0009`) | Done | same |
+| 5 | `python -m app.cli purge-expired` (expired revoked tokens and idempotency records); docs/12, docs/13, ADR-0013 to ADR-0016, updates to docs 05, 07-11, 15, 21, README; `infrastructure/scripts/demo_reliability.py` | Done | Linux development workspace; Windows run pending (this delivery) |
+
+### Phase 6 verification (actual results)
+
+- Windows, after each part: `ruff check .` clean (backend and mock-services),
+  `alembic check` no drift after migrations `0006`, `0007`, `0008`, `0009`;
+  `python -m pytest`: **414, 430, 449, 466 passed**.
+- Linux workspace, Part 5: `ruff check` clean, **467 passed** (one new test for
+  `purge-expired`).
+- Live runs in the Linux workspace with the API, worker, relay, Redis and the mocks as
+  separate processes (docs/12 section 10 has the full output of the final run):
+  - transient 503 x2 on payroll: attempts #1, #2 failed, #3 succeeded after ~2 s and ~4 s;
+  - retries exhausted: event `dead_letter`, entry `retries_exhausted` with 5 attempts;
+    replay `202`, second replay `409 already_replayed`; attempt #6 succeeded; Slack and
+    Google not called again;
+  - `POST /employees` repeated with one key: same employee, `Idempotent-Replayed: true`,
+    one event; a different body with the same key `422 idempotency_key_reused`;
+  - payroll answering after the read timeout: attempts timeout, `in_progress` (409), then
+    succeeded - one payroll record;
+  - Google down during three hires: breaker opened after 5 requests, no requests while
+    open, one trial call after 60 s closed it, three accounts in total;
+  - Slack limited to 2 calls per minute: the third hire waited for the next minute and then
+    made a single attempt.
+- Bug found by the first live retry run and fixed before commit: a worker could skip a due
+  retry while the relay still held the row (READ COMMITTED); due `retrying` events are now
+  claimable; `test_a_worker_claims_a_due_retry_even_while_the_relay_holds_the_row` fails
+  without the fix.
+
+## Phase 6 acceptance criteria
+
+| Criterion | Evidence |
+|---|---|
+| Retry engine: exponential backoff, jitter, configurable maximum, scheduling, history | `reliability/retry.py`, engine, relay; `test_retries.py`; docs/12 sections 3-4 |
+| Idempotency: event-ID deduplication, operation IDs, idempotency keys, duplicate prevention | atomic claim and one execution per (event, workflow) (Phase 5); `syncforge-job-<id>` keys; `idempotency_records`; `test_idempotency.py`, `test_workflow_engine.py`; docs/13 |
+| Dead-letter queue: storage, error preservation, inspection, manual replay, replay authorization | `dead_letter_events`, `services/dead_letters.py`, `api/v1/dead_letters.py`; `test_dead_letters.py`, concurrency test |
+| Rate limiting: HTTP 429, `Retry-After`, configurable connector limits | retry policy; `rate_limit_per_minute`; `test_rate_limit_waits_at_least_retry_after`, `test_jobs_over_the_limit_wait_without_using_an_attempt` |
+| Timeouts: connection, read, operation | `connectors/http.py`; `test_timeouts_are_retried`, `test_one_operation_cannot_exceed_its_deadline_across_requests` |
+| Circuit breaker: closed, open, half-open, recovery | `reliability/circuit_breaker.py`; `test_circuit_breaker.py` |
+| Failure classification; permanent failures not retried | `connectors/errors.py`; `test_permanent_failures_are_not_retried`, `test_permanent_failures_are_dead_lettered_at_once` |
+| Tables `synchronization_attempts`, `idempotency_records`, `dead_letter_events` | migrations `0006`-`0009`; docs/07 |
+| APIs: dead-letter list, detail, replay; event attempts | docs/08 sections 9-10; API tests |
+| Simulations: unavailable service, 429, timeout, duplicate event, worker crash, retry exhaustion, dead-letter replay, circuit breaker | `test_retries.py`, `test_idempotency.py`, `test_workflow_engine.py`, `test_dead_letters.py`, `test_circuit_breaker.py`; demo script |
+| Retry, backoff, jitter, idempotency, dead-letter lifecycle, breaker transitions, classification, recovery documented | docs/12, docs/13, ADR-0013 to ADR-0016 |
+| Failure, retry, dead-letter transition and successful replay demonstrated | live runs above |
 
 ## Phase 5 progress
 
@@ -206,15 +260,23 @@
 
 ## Known limitations (current)
 
-- Workflow steps are attempted once per execution: a failed step fails the event; retries
-  with backoff, dead-lettering, replay, idempotency keys towards external APIs and the
-  circuit breaker are Phase 6.
-- A worker crash in the one-commit window after an external application created an account
-  but before SyncForge stored the link makes the resumed `create_user` fail with "already
-  exists" (Phase 6, idempotency keys).
+- Idempotency keys towards external applications are honoured by the three mock services;
+  the real Slack SCIM and Google Directory APIs do not document such a header. Against
+  them, a crash between the external create and SyncForge storing the link produces a
+  `conflict` and a dead-letter entry (visible, not a duplicate). "Find before create"
+  (adopting an existing account by email) is not implemented (docs/13 section 3).
+- A long outage dead-letters work after the retry budget (about 30 s of backoff, longer
+  with `Retry-After` or an open circuit); it is restarted by replaying the entries, one at
+  a time (no bulk replay yet).
+- Circuit-breaker and rate-limit state are rows in PostgreSQL, updated on every external
+  call to that connector - fine at provisioning volumes; the rate limit is a fixed
+  one-minute window (up to twice the limit across a boundary).
+- `python -m app.cli purge-expired` must be scheduled by the operator (cron / Task
+  Scheduler); SyncForge has no built-in scheduler.
 - Several workers do not guarantee per-employee ordering (steps read current state, so this
   is safe today); worker and relay health endpoints are Phase 9.
-- Event, outbox and execution tables are never pruned (retention job: future improvement).
+- Event, outbox, execution, attempt and dead-letter tables are never pruned (retention job:
+  future improvement).
 - All three connectors are simulated (verified against local mocks only); real Slack and
   Google need real tenants and, for Google, the JWT-bearer grant (docs/10 section 1).
 - OAuth tokens are cached per process; the browser authorization-code flow is not implemented.
@@ -225,11 +287,8 @@
 - Free-text employee search is a substring scan within one organization (no trigram index).
 - Members can only be added if they already registered (no email invitations yet).
 - No rate limiting on login/register yet - Phase 9.
-- Expired `revoked_tokens` rows are not cleaned up automatically yet - planned as a periodic
-  maintenance task in Phase 6.
 - No refresh tokens: users log in again after 30 minutes.
-- One unidentified intermittent test failure: in the Linux workspace, 1 of 15 full
-  runs of the suite reported `1 failed, 395 passed`, without the test name being captured.
-  It did not reappear in the following 14 full runs or in 15 runs of the connector, engine,
-  relay, worker and events test files; all Windows runs passed. To be pinned down in the
-  Phase 9 quality pass (or earlier if it reappears).
+- One unidentified intermittent test failure seen once at the end of Phase 5 (Linux
+  workspace, 1 of 15 full runs, test name not captured). It has not reappeared in any
+  Phase 6 run (Windows and Linux). To be pinned down in the Phase 9 quality pass if it
+  returns.

@@ -9,7 +9,7 @@ a second onboarding run in every connected application).
 
 Keys are scoped to (organization, user): two users cannot collide, and one user cannot
 read another user's stored responses by guessing their keys. Records expire after
-IDEMPOTENCY_TTL_HOURS; `python -m app.cli purge-idempotency-records` deletes expired
+IDEMPOTENCY_TTL_HOURS; `python -m app.cli purge-expired` deletes expired
 ones.
 """
 

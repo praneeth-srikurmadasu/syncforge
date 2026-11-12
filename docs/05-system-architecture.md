@@ -1,7 +1,7 @@
 # 05 - System Architecture
 
-> **Scope:** describes what is implemented as of Phase 5. Sections are added as
-> later phases add components (reliability engine, frontend). Nothing here is planned-only.
+> **Scope:** describes what is implemented as of Phase 6. Sections are added as
+> later phases add components (audit log, frontend). Nothing here is planned-only.
 
 ## 1. Current components
 
@@ -24,6 +24,7 @@ flowchart LR
     redis[("Redis 7<br/>Docker Compose")]
     subgraph worker["Celery worker (same codebase)"]
         engine["EventProcessor<br/>workflow engine"]
+        rel["Reliability<br/>retry policy, dead letter,<br/>rate limit, circuit breaker"]
     end
     subgraph mocks["mock-services (simulated)"]
         slack["Slack SCIM mock :9101"]
@@ -46,7 +47,10 @@ flowchart LR
     redis --> engine
     engine -- "claim, record steps" --> db
     engine -- "via ConnectorService" --> conn
-    conn -- "HTTP, timeouts,<br/>host allowlist" --> slack
+    engine --> rel
+    rel -- "breaker and rate-limit rows,<br/>dead-letter entries" --> db
+    relay -- "due retries" --> db
+    conn -- "HTTP, timeouts, deadline,<br/>host allowlist, Idempotency-Key" --> slack
     conn --> google
     conn --> payroll
 ```
@@ -55,8 +59,10 @@ flowchart LR
 One codebase, three kinds of process: the **API**, the **outbox relay** and the **Celery
 workers**. They share models, services and connectors, and scale independently. PostgreSQL
 is the system of record; Redis only carries "process event X" messages. The event pipeline
-is described in [docs/09](09-event-driven-architecture.md) and the workflow engine in
-[docs/11](11-workflow-engine.md).
+is described in [docs/09](09-event-driven-architecture.md), the workflow engine in
+[docs/11](11-workflow-engine.md), and the reliability engine (retries, dead-letter queue,
+circuit breaker, rate limits, timeouts) in [docs/12](12-reliability-and-retries.md) and
+[docs/13](13-idempotency.md).
 
 ## 2. Application layers
 
@@ -71,6 +77,7 @@ is described in [docs/09](09-event-driven-architecture.md) and the workflow engi
 | Events | `app/events/` | `lifecycle.py`: pure functions that turn a before/after change into lifecycle events. `outbox.py`: stage events and outbox rows in the caller's transaction. `relay.py`: publish outbox rows, recover expired leases | commit on behalf of the caller (`outbox.py`), or contain workflow logic |
 | Workflows | `app/workflows/` | `engine.py`: claim an event, plan executions, run steps through `ConnectorService`, record outcomes | build HTTP responses |
 | Workers | `app/workers/` | Celery app configuration and thin tasks that open a session and call the engine | contain business rules |
+| Reliability | `app/reliability/` | Retry policy, dead-lettering, circuit breaker, rate limiter, idempotency records: small building blocks used by the engine, `ConnectorService` and the employees API | build HTTP responses |
 | Connectors | `app/connectors/` | Adapters translating the common interface into each vendor's API; one hardened HTTP client; error normalization | contain business rules or touch the database |
 | Core | `app/core/` | Settings, logging, middleware, errors, DB engine | depend on features |
 
@@ -146,9 +153,12 @@ Implementation: `app/core/errors.py`.
 **Investigating a failed request:** take the `request_id` from the error response and
 search the logs for it - every line written while handling that request carries it.
 
-**Investigating a failed synchronization:** find the event (`GET .../events?event_status=failed`),
-open it (`GET .../events/{id}`) to see which job failed and why, then search the worker
-logs for the event's `correlation_id` or `event_id`.
+**Investigating a failed synchronization:** open the dead-letter queue
+(`GET .../dead-letter-events?entry_status=open`) or find the event
+(`GET .../events?event_status=retrying` for work still being retried), open it
+(`GET .../events/{id}`, and `.../attempts` for every external call) to see which step
+failed and why, then search the worker logs for the event's `correlation_id` or `event_id`
+([docs/21](21-troubleshooting.md#investigating-a-failed-synchronization)).
 
 ## 6. Health and readiness
 

@@ -18,6 +18,7 @@
 | Pagination | List endpoints take `limit` (1-100) and `offset` (default 0) and return `{"items", "total", "limit", "offset"}`. Every sort ends with `id` as a tie-breaker, so pages never overlap or skip rows. |
 | Partial updates | `PATCH` changes only the fields present in the body. Sending `null` clears an optional field; unknown fields are rejected (`422`). |
 | Tenant isolation | Any resource under `/organizations/{organization_id}` returns **404** to non-members, and **403** to members whose role lacks the permission. |
+| Idempotency | `POST .../employees` accepts an optional `Idempotency-Key` header; a repeat returns the stored response with `Idempotent-Replayed: true` ([docs/13](13-idempotency.md)). |
 
 ### Error codes in use
 
@@ -72,6 +73,11 @@
 | 422 | `connector_not_found` | (workflow steps) connector unknown in this organization - also for another organization's connector; `details.ids` |
 | 422 | `duplicate_step` | The same connector and operation appear more than once in a workflow |
 | 404 | `event_not_found` | Integration event does not exist in this organization |
+| 404 | `dead_letter_not_found` | Dead-letter entry does not exist in this organization |
+| 409 | `already_replayed` | The dead-letter entry was already replayed; `details.replayed_at` |
+| 409 | `workflow_inactive` | Replay refused: none of the failed workflows is active |
+| 409 | `event_not_dead_lettered` | Replay refused: the event is not in the dead-letter state (invariant guard) |
+| 422 | `idempotency_key_reused` | The `Idempotency-Key` was already used for a different request |
 | 500 | `internal_error` | Unexpected server error (details only in logs) |
 | 503 | `not_ready` | Readiness check failed (database unreachable) |
 
@@ -236,7 +242,14 @@ ID from another organization returns `404 employee_not_found`, exactly like a ra
 | employment_status | no | `active` (default) or `on_leave`. `terminated` is rejected - use `/terminate` |
 
 `201` with the employee object. Errors: `409 employee_number_taken | email_taken`,
-`422 validation_error | department_not_found | manager_not_found | manager_terminated`.
+`422 validation_error | department_not_found | manager_not_found | manager_terminated |
+idempotency_key_reused`.
+
+**Idempotency.** Optional header `Idempotency-Key` (1-255 printable ASCII characters, e.g. a
+UUID). A repeat with the same key and body by the same user within
+`IDEMPOTENCY_TTL_HOURS` (24) returns the first `201` and body with
+`Idempotent-Replayed: true` and creates nothing; the same key with a different body is
+`422 idempotency_key_reused`; failed requests are not remembered ([docs/13](13-idempotency.md#4-incoming-idempotency-key-on-post-employees)).
 
 ### `PATCH .../employees/{employee_id}`
 
@@ -348,14 +361,21 @@ POST .../connectors
 
 Credentials are never returned. Per type: Slack `{"token"}`, Google
 `{"client_id", "client_secret"}`, payroll `{"api_key"}`. Optional `config.base_url`
-overrides the default endpoint and must be an allowed host.
+overrides the default endpoint and must be an allowed host. Optional
+`config.rate_limit_per_minute` (1-10000) paces SyncForge's calls to this connector across
+all workers ([docs/12, section 8](12-reliability-and-retries.md#8-rate-limits-and-timeouts)).
+
+Every connector response also contains the circuit breaker state:
+`"circuit": {"state": "closed" | "open" | "half_open", "consecutive_failures": 0,
+"open_until": null}` ([docs/12, section 7](12-reliability-and-retries.md#7-the-circuit-breaker)).
 
 ### Test
 
 `200` `{"ok": true, "status": "connected", "tested_at": "...", "latency_ms": 12.4,
 "detail": "SCIM API reachable.", "error": null}` - or on failure
 `{"ok": false, "status": "error", ..., "error": {"category": "authentication",
-"code": "http_401", "retryable": false, "retry_after": null, ...}}`.
+"code": "http_401", "retryable": false, "retry_after": null, ...}}`. A successful test also
+closes the connector's circuit breaker.
 
 ### Operations
 
@@ -369,7 +389,10 @@ Request: `{"operation": "create_user" | "update_user" | "deactivate_user" | "get
 Rules: `create_user` requires no existing link and a non-terminated employee; the other
 operations require a link (`409 not_linked`). External failures return
 `502 connector_error` with the normalized error in `details`; nothing is linked when
-`create_user` fails. Operations are attempted **once** in Phase 4 (retries: Phase 6).
+`create_user` fails. This manual endpoint makes **one** attempt and sends no idempotency
+key; retries apply to workflow steps ([docs/12](12-reliability-and-retries.md)). It does go
+through the connector's circuit breaker (`502` with category `circuit_open` while it is
+open).
 
 ## 8. Workflows - `/api/v1/organizations/{organization_id}/workflows`
 
@@ -439,8 +462,9 @@ Read-only. Events are created by employee changes and processed by workers.
 
 | Method and path | Permission | Notes |
 |---|---|---|
-| `GET .../events` | `events:read` | Newest first. Filters: `event_status` (`pending`, `processing`, `completed`, `failed`), `event_type`, `employee_id` |
+| `GET .../events` | `events:read` | Newest first. Filters: `event_status` (`pending`, `processing`, `retrying`, `completed`, `dead_letter`), `event_type`, `employee_id` |
 | `GET .../events/{event_id}` | `events:read` | The event plus every workflow execution it triggered, with jobs |
+| `GET .../events/{event_id}/attempts` | `events:read` | Every external call made for the event, ordered by execution, step and attempt number |
 
 Every member holds `events:read`.
 
@@ -457,9 +481,51 @@ Every member holds `events:read`.
 emails); `test_events_are_listed_without_personal_data` checks that the values do not appear
 in the response. The values stay in the database for workers and the audit log.
 
-`attempts` above 1 means the event was redelivered or recovered after a worker failure.
+`attempts` above 1 means the event was redelivered, recovered after a worker failure, or
+retried. `next_attempt_at` is set while the event is `retrying`. Jobs carry
+`next_attempt_at` too.
 
-## 10. PowerShell examples
+Attempt object (`GET .../events/{event_id}/attempts`):
+
+```json
+{"job_id": "...", "execution_id": "...", "position": 3, "connector_id": "...",
+ "operation": "create_user", "attempt_number": 2,
+ "started_at": "...", "finished_at": "...", "duration_ms": 12.8,
+ "outcome": "failed", "error_category": "server", "error_code": "http_503",
+ "error_message": "payroll: Simulated failure (503).", "http_status": 503,
+ "retryable": true, "retry_after_seconds": null, "next_attempt_at": "..."}
+```
+
+`outcome` is `succeeded`, `failed`, `skipped`, `interrupted` (the worker stopped during the
+call), or `null` while the call is in progress.
+
+## 10. Dead-letter queue - `/api/v1/organizations/{organization_id}/dead-letter-events`
+
+Events that failed for good ([docs/12, section 5](12-reliability-and-retries.md#5-the-dead-letter-queue)).
+
+| Method and path | Permission | Notes |
+|---|---|---|
+| `GET .../dead-letter-events` | `events:read` | Newest first. Filters: `entry_status` (`open`, `replayed`), `connector_id` |
+| `GET .../dead-letter-events/{entry_id}` | `events:read` | The entry, the event's current state (`event`) and every dead-letter round of that event (`history`) |
+| `POST .../dead-letter-events/{entry_id}/replay` | **`events:replay`** | `202 Accepted`: the event is requeued; only failed steps (and those skipped because of them) run again, each with a fresh retry budget. `409 already_replayed`, `409 workflow_inactive` |
+
+`events:replay` is held by Integration Managers and Organization Admins, not by Viewers: a
+replay makes real calls to external applications.
+
+```json
+{"id": "...", "event_id": "...", "event_type": "employee.created", "employee_id": "...",
+ "reason": "retries_exhausted", "job_id": "...", "connector_id": "...",
+ "operation": "create_user", "error_category": "server", "error_code": "http_503",
+ "http_status": 503, "error_message": "Gave up after 5 attempts: payroll: Simulated failure (503).",
+ "attempts": 5, "failed_steps": 1, "dead_lettered_at": "...",
+ "status": "open", "replayed_at": null, "replayed_by_user_id": null}
+```
+
+`reason` is `retries_exhausted` (a retryable error outlasted the retry budget) or
+`non_retryable` (credentials, permissions, invalid data, configuration). Like events, entries
+contain no employee names or emails.
+
+## 11. PowerShell examples
 
 ```powershell
 $base = "http://127.0.0.1:8000/api/v1/auth"
@@ -513,4 +579,20 @@ Invoke-RestMethod -Method Post "$wf/$($onboarding.id)/activate" -Headers $h
 # ... create an employee (as above), then:
 $events = Invoke-RestMethod "$api/organizations/$($org.id)/events?event_type=employee.created" -Headers $h
 Invoke-RestMethod "$api/organizations/$($org.id)/events/$($events.items[0].id)" -Headers $h
+Invoke-RestMethod "$api/organizations/$($org.id)/events/$($events.items[0].id)/attempts" -Headers $h
+```
+
+```powershell
+# Idempotent create: run twice - same employee, second response replayed
+$key = [guid]::NewGuid().ToString()
+$body = @{ employee_number = "E-2001"; first_name = "Ada"; last_name = "Lovelace";
+           email = "ada.l@acme.example"; joining_date = "2026-11-01" } | ConvertTo-Json
+$r = Invoke-WebRequest -Method Post $emp -Headers ($h + @{ "Idempotency-Key" = $key }) `
+  -ContentType "application/json" -Body $body
+$r.StatusCode; $r.Headers["Idempotent-Replayed"]
+
+# Dead-letter queue: list open entries and replay the first one
+$dlq = "$api/organizations/$($org.id)/dead-letter-events"
+$open = Invoke-RestMethod "${dlq}?entry_status=open" -Headers $h
+Invoke-RestMethod -Method Post "$dlq/$($open.items[0].id)/replay" -Headers $h
 ```

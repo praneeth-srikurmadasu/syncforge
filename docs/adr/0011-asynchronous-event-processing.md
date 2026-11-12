@@ -49,6 +49,9 @@ For the guarantee:
 - One gap remains until Phase 6: a crash after an external application created an account
   but before SyncForge stored the link makes the resumed `create_user` fail with "already
   exists". Idempotency keys towards external APIs close it.
+  *Update (Phase 6): closed for applications that honour idempotency keys (the mocks do);
+  for the real Slack and Google APIs the window produces a visible conflict and a
+  dead-letter entry - see ADR-0015 and docs/13.*
 
 ## Consequences
 - Every step's status is queryable (`GET .../events/{id}`), which Phase 6 (retries, dead

@@ -1,6 +1,6 @@
 # 15 - Security Design
 
-> **Scope:** controls implemented as of Phase 4. The "Not yet implemented" table at the
+> **Scope:** controls implemented as of Phase 6. The "Not yet implemented" table at the
 > end lists what later phases add - those items are not claimed as done.
 
 ## 1. Authentication flow
@@ -34,7 +34,7 @@ sequenceDiagram
 | Issue | HS256, signed with `JWT_SECRET_KEY` (>= 32 chars). Lifetime `ACCESS_TOKEN_EXPIRE_MINUTES` (default 30). Each token gets a random `jti`. |
 | Use | Sent as `Authorization: Bearer`. On every protected request `get_auth_context` checks: present -> signature -> `exp` -> `iss` = `syncforge` -> `aud` = `syncforge-api` -> `type` = `access` -> required claims present -> `jti` not revoked -> user exists and `is_active`. |
 | Revoke | `POST /auth/logout` stores the `jti` in `revoked_tokens`. Only that token is revoked. |
-| Expire | After `exp` the token is rejected with `token_expired`; its denylist row is no longer needed. |
+| Expire | After `exp` the token is rejected with `token_expired`; its denylist row is no longer needed and is deleted by `python -m app.cli purge-expired` (run it daily from a scheduler). |
 
 Algorithm pinning: decoding accepts only `HS256`, so unsigned (`alg: none`) or
 algorithm-swapped tokens are rejected (covered by `test_invalid_tokens_are_rejected`).
@@ -85,6 +85,13 @@ end a session; the cost is one primary-key lookup per request.
   connector and employee IDs only (`test_engine_logs_carry_ids_but_no_personal_data`).
 - Broker messages carry only an event ID and a correlation ID - no personal data, no
   credentials - and use JSON serialization (never pickle).
+- Attempt history and dead-letter entries store normalized error categories, codes, HTTP
+  statuses and short messages from the external application's error body - never request
+  or response payloads (`test_api_lists_and_shows_entries_without_personal_data`).
+- Idempotency records store the `POST /employees` response (work data the caller was
+  allowed to see) for `IDEMPOTENCY_TTL_HOURS`; keys are scoped to (organization, user), so
+  one user cannot obtain another's stored response by guessing a key; expired records are
+  deleted by `python -m app.cli purge-expired`.
 
 ## 7. Connector credentials and outbound calls
 
@@ -105,7 +112,11 @@ Details: [connector framework, sections 5 and 7](10-connector-framework.md#5-the
   is saved and on every call. Redirects are not followed and environment proxies are ignored.
   Limitation: the check is by host name, not resolved IP; production should allow only vendor
   host names and restrict egress at the network level.
-- **Timeouts** on every outbound call (connect 3 s, read 10 s by default).
+- **Timeouts** on every outbound call (connect 3 s, read 10 s by default) and a deadline
+  for each whole operation (30 s), so a slow or hostile endpoint cannot hold a worker.
+- **Bounded load on external applications**: retries are limited and spread by jitter, a
+  per-connector circuit breaker stops calls to an application that is down, and an optional
+  per-connector rate limit paces calls ([docs/12](12-reliability-and-retries.md)).
 - **Tenant isolation**: connectors, credentials and external accounts are scoped by
   organization and linked through composite foreign keys, so a credential or account link
   can never point at another organization's connector or employee.
@@ -141,7 +152,8 @@ Endpoints check a **permission**, never a role name. The mapping lives in one pl
 | `connectors:manage` - configure, test, disconnect connectors; run operations | no | **yes** | yes | yes |
 | `workflows:read` - list and view workflows and their execution history | yes | yes | yes | yes |
 | `workflows:manage` - create, edit, activate, deactivate workflows | no | **yes** | yes | yes |
-| `events:read` - list and view integration events with their executions | yes | yes | yes | yes |
+| `events:read` - list and view integration events with their executions, attempts and the dead-letter queue | yes | yes | yes | yes |
+| `events:replay` - replay a dead-lettered event (causes real calls to external applications) | no | **yes** | yes | yes |
 
 Integration Managers operate integrations (connectors and workflows) but do not manage
 people, departments or the organization itself; `test_role_permission_matrix` pins that
@@ -210,7 +222,6 @@ lock is removed.
 |---|---|
 | Rate limiting on login/register | Phase 9 |
 | Request body size limits | Phase 9 |
-| Scheduled cleanup of expired `revoked_tokens` rows | Phase 6 (periodic maintenance task; not done in Phase 5) |
 | Audit log of security-relevant actions (including Super Admin actions) | Phase 7 |
 | Field-level masking of employee personal data for low-privilege roles | Future improvement |
 | Invitations for people who are not registered yet | Future improvement |
