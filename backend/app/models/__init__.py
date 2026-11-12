@@ -10,11 +10,23 @@ from app.models.connector import (
     ExternalAccountStatus,
 )
 from app.models.employee import Department, Employee, EmploymentStatus
+from app.models.event import IntegrationEvent, IntegrationEventStatus, OutboxEvent
 from app.models.organization import Organization, OrganizationMembership, OrganizationRole
 from app.models.revoked_token import RevokedToken
 from app.models.user import User
+from app.models.workflow import (
+    TRIGGER_EVENT_TYPES,
+    ExecutionStatus,
+    JobStatus,
+    StepOperation,
+    SynchronizationJob,
+    Workflow,
+    WorkflowExecution,
+    WorkflowStep,
+)
 
 __all__ = [
+    "TRIGGER_EVENT_TYPES",
     "Base",
     "Connector",
     "ConnectorCredential",
@@ -22,11 +34,21 @@ __all__ = [
     "Department",
     "Employee",
     "EmploymentStatus",
+    "ExecutionStatus",
     "ExternalAccount",
     "ExternalAccountStatus",
+    "IntegrationEvent",
+    "IntegrationEventStatus",
+    "JobStatus",
     "Organization",
     "OrganizationMembership",
     "OrganizationRole",
+    "OutboxEvent",
     "RevokedToken",
+    "StepOperation",
+    "SynchronizationJob",
     "User",
+    "Workflow",
+    "WorkflowExecution",
+    "WorkflowStep",
 ]

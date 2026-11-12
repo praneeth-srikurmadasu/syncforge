@@ -10,9 +10,10 @@ This module enforces the business rules:
   reports move to the terminated employee's own manager;
 * only terminated employees can be archived (soft-deleted).
 
-Each change is classified into lifecycle events (app/events/lifecycle.py). In this
-phase events are logged; from Phase 5 they are written to the transactional outbox in
-the same transaction as the change.
+Each change is classified into lifecycle events (app/events/lifecycle.py), which are
+written to the transactional outbox (app/events/outbox.py) in the same database
+transaction as the change itself: the employee row, its events and their outbox rows
+commit together or not at all.
 """
 
 import logging
@@ -31,7 +32,8 @@ from app.events.lifecycle import (
     diff,
     snapshot,
 )
-from app.models import Department, Employee, EmploymentStatus, Organization
+from app.events.outbox import record_events
+from app.models import Department, Employee, EmploymentStatus, IntegrationEvent, Organization
 from app.repositories.employees import DepartmentRepository, EmployeeRepository
 from app.schemas.employees import EmployeeCreate
 
@@ -144,9 +146,9 @@ class EmployeeService:
         self.session = session
         self.employees = EmployeeRepository(session)
         self.departments = DepartmentRepository(session)
-        # Events produced by the last successful operation (for logging now, the
-        # outbox in Phase 5, and tests).
+        # Events produced by the last successful operation, and their stored records.
         self.emitted_events: list[LifecycleEvent] = []
+        self.recorded_events: list[IntegrationEvent] = []
 
     # ---- reads -----------------------------------------------------------------------
 
@@ -167,13 +169,15 @@ class EmployeeService:
         employee = Employee(organization_id=org_id, **payload.model_dump())
         try:
             self.employees.add(employee)
+            events = [created_event(employee)]
+            records = record_events(self.session, events)
             self.session.commit()
         except IntegrityError as exc:
             self.session.rollback()
             raise _translate_integrity_error(exc) from exc
 
         self.session.refresh(employee)
-        self._emit([created_event(employee)])
+        self._committed(events, records)
         return employee
 
     # ---- update ----------------------------------------------------------------------
@@ -207,17 +211,18 @@ class EmployeeService:
         if not events:
             # Nothing changed, so no UPDATE is issued; commit just releases the locks.
             self.session.commit()
-            self.emitted_events = []
+            self._committed([], [])
             return employee
 
         try:
+            records = record_events(self.session, events)
             self.session.commit()
         except IntegrityError as exc:
             self.session.rollback()
             raise _translate_integrity_error(exc) from exc
 
         self.session.refresh(employee)
-        self._emit(events)
+        self._committed(events, records)
         return employee
 
     # ---- terminate -------------------------------------------------------------------
@@ -250,9 +255,10 @@ class EmployeeService:
             report.manager_id = employee.manager_id
             events += classify_update(org_id, report.id, diff(report_before, snapshot(report)))
 
+        records = record_events(self.session, events)
         self.session.commit()
         self.session.refresh(employee)
-        self._emit(events)
+        self._committed(events, records)
         return employee
 
     # ---- archive ---------------------------------------------------------------------
@@ -335,14 +341,17 @@ class EmployeeService:
                 code="manager_cycle",
             )
 
-    def _emit(self, events: list[LifecycleEvent]) -> None:
+    def _committed(self, events: list[LifecycleEvent], records: list[IntegrationEvent]) -> None:
+        """Log events once their transaction has committed (never before)."""
         self.emitted_events = events
-        for event in events:
+        self.recorded_events = records
+        for event, record in zip(events, records, strict=True):
             # IDs and field names only - never the values, which can be personal data.
             logger.info(
                 "employee lifecycle event",
                 extra={
                     "event_type": event.type.value,
+                    "event_id": str(record.id),
                     "organization_id": str(event.organization_id),
                     "employee_id": str(event.employee_id),
                     "changed_fields": sorted(event.changes),

@@ -6,6 +6,7 @@ from datetime import date
 from sqlalchemy.orm import Session
 
 from app.models import (
+    Connector,
     Department,
     Employee,
     EmploymentStatus,
@@ -104,3 +105,22 @@ def create_employee(
     session.add(employee)
     session.flush()
     return employee
+
+
+def create_connector(
+    session: Session,
+    organization: Organization,
+    *,
+    connector_type: str = "slack",
+    name: str | None = None,
+) -> Connector:
+    """A connector row without credentials (for database-level tests)."""
+    connector = Connector(
+        organization_id=organization.id,
+        connector_type=connector_type,
+        connector_version="1.0.0",
+        name=name or f"{connector_type}-{uuid.uuid4().hex[:6]}",
+    )
+    session.add(connector)
+    session.flush()
+    return connector

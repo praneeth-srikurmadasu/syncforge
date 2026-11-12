@@ -11,8 +11,8 @@ Rules for an update (several events can come from one change):
   any other tracked field changed   => employee.updated (lists only those fields)
 A change that alters nothing produces no events.
 
-Phase 3 detects and logs these events. From Phase 5 they are written to the
-transactional outbox in the same database transaction as the employee change.
+Detected events are written to the transactional outbox (app/events/outbox.py) in the
+same database transaction as the employee change.
 """
 
 import enum
