@@ -1,6 +1,8 @@
 # SyncForge local development stack.
 # Values come from .env in this folder (copy .env.example to .env first).
-# Phase 2: PostgreSQL. Redis, API, worker, mocks and frontend are added in later phases.
+# PostgreSQL (system of record) and Redis (message broker for the background workers).
+# The API, worker, relay and mock services run from the virtual environment for now;
+# they are containerized in Phase 10.
 
 name: syncforge
 
@@ -18,6 +20,22 @@ services:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: syncforge-redis
+    # Redis only carries "please process event X" messages; the database is the source
+    # of truth, so append-only persistence is not needed (a lost message is re-sent by
+    # the outbox relay).
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10

@@ -64,6 +64,15 @@ class Settings(BaseSettings):
     google_workspace_base_url: str = "http://127.0.0.1:9102"
     payroll_base_url: str = "http://127.0.0.1:9103"
 
+    # ---- Background processing (Redis + Celery workers + outbox relay) ------------
+    redis_url: str = "redis://localhost:6379/0"
+    # How long a worker owns an event it claimed. Renewed before every step; if a worker
+    # dies, the relay re-dispatches the event once the lease has expired.
+    worker_lease_seconds: int = Field(default=300, ge=10, le=3600)
+    # Outbox relay: rows published per poll, and the pause between polls.
+    outbox_batch_size: int = Field(default=100, ge=1, le=1000)
+    outbox_poll_interval_seconds: float = Field(default=1.0, gt=0, le=60)
+
     @field_validator("connector_encryption_key", mode="before")
     @classmethod
     def _blank_key_means_unset(cls, value: object) -> object:

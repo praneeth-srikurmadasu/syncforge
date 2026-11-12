@@ -11,15 +11,25 @@ up in shell history). If the email already belongs to a user, that user is promo
 Local demo data (see app/seed.py):
 
     python -m app.cli seed-demo --admin-email you@example.com
+
+The outbox relay (publishes integration events to the message broker; run one or more,
+next to the Celery workers - see docs/09):
+
+    python -m app.cli outbox-relay
 """
 
 import argparse
 import getpass
+import logging
 import sys
+import time
 
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.database import SessionLocal
+from app.core.logging import configure_logging
+from app.events.relay import OutboxRelay
 from app.models import User
 from app.repositories.users import UserRepository
 from app.schemas.auth import PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH
@@ -69,10 +79,14 @@ def main(argv: list[str] | None = None) -> int:
     create.add_argument("--name", default="Platform Admin")
     seed = commands.add_parser("seed-demo", help="Create the 'Acme Demo' organization")
     seed.add_argument("--admin-email", required=True, help="An already registered user")
+    relay = commands.add_parser("outbox-relay", help="Publish outbox events to the broker")
+    relay.add_argument("--once", action="store_true", help="Run one round, then exit")
     args = parser.parse_args(argv)
 
     if args.command == "seed-demo":
         return _seed_demo(args.admin_email)
+    if args.command == "outbox-relay":
+        return run_outbox_relay(once=args.once)
 
     with SessionLocal() as session:
         existing = UserRepository(session).get_by_email(args.email.strip().lower())
@@ -102,6 +116,32 @@ def _seed_demo(admin_email: str) -> int:
             f"{result.employees} employees. {admin_email} is its Organization Admin."
         )
     return 0
+
+
+def run_outbox_relay(*, once: bool = False) -> int:
+    """Poll the outbox until Ctrl+C. Each round commits on its own, so stopping is safe."""
+    from app.workers.tasks import publish_event  # imports Celery only for this command
+
+    settings = get_settings()
+    configure_logging(settings.log_level)
+    logger = logging.getLogger("syncforge.relay")
+    logger.info(
+        "outbox relay started",
+        extra={"poll_interval_seconds": settings.outbox_poll_interval_seconds},
+    )
+    try:
+        while True:
+            try:
+                with SessionLocal() as session:
+                    OutboxRelay(session, publish_event, settings).run_once()
+            except Exception:  # database briefly unavailable: log and keep polling
+                logger.exception("outbox relay round failed")
+            if once:
+                return 0
+            time.sleep(settings.outbox_poll_interval_seconds)
+    except KeyboardInterrupt:
+        logger.info("outbox relay stopped")
+        return 0
 
 
 if __name__ == "__main__":
