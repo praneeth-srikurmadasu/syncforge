@@ -1,7 +1,7 @@
 # 05 - System Architecture
 
-> **Scope:** describes what is implemented as of Phase 6. Sections are added as
-> later phases add components (audit log, frontend). Nothing here is planned-only.
+> **Scope:** describes what is implemented as of Phase 7. Sections are added as
+> later phases add components (frontend). Nothing here is planned-only.
 
 ## 1. Current components
 
@@ -62,7 +62,8 @@ is the system of record; Redis only carries "process event X" messages. The even
 is described in [docs/09](09-event-driven-architecture.md), the workflow engine in
 [docs/11](11-workflow-engine.md), and the reliability engine (retries, dead-letter queue,
 circuit breaker, rate limits, timeouts) in [docs/12](12-reliability-and-retries.md) and
-[docs/13](13-idempotency.md).
+[docs/13](13-idempotency.md); the audit log, optimistic concurrency and conflict handling
+in [docs/14](14-data-integrity.md).
 
 ## 2. Application layers
 
@@ -77,6 +78,8 @@ circuit breaker, rate limits, timeouts) in [docs/12](12-reliability-and-retries.
 | Events | `app/events/` | `lifecycle.py`: pure functions that turn a before/after change into lifecycle events. `outbox.py`: stage events and outbox rows in the caller's transaction. `relay.py`: publish outbox rows, recover expired leases | commit on behalf of the caller (`outbox.py`), or contain workflow logic |
 | Workflows | `app/workflows/` | `engine.py`: claim an event, plan executions, run steps through `ConnectorService`, record outcomes | build HTTP responses |
 | Workers | `app/workers/` | Celery app configuration and thin tasks that open a session and call the engine | contain business rules |
+| Audit | `app/audit.py` | Stage audit entries in the caller's transaction; actor from the session | commit, or record secrets or personal values |
+| Integrity | `app/integrity/` | Pure field comparison rules and default source-of-truth policies (used by `services/conflicts.py`) | do I/O |
 | Reliability | `app/reliability/` | Retry policy, dead-lettering, circuit breaker, rate limiter, idempotency records: small building blocks used by the engine, `ConnectorService` and the employees API | build HTTP responses |
 | Connectors | `app/connectors/` | Adapters translating the common interface into each vendor's API; one hardened HTTP client; error normalization | contain business rules or touch the database |
 | Core | `app/core/` | Settings, logging, middleware, errors, DB engine | depend on features |

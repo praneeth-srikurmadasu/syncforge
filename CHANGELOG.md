@@ -4,6 +4,45 @@ All notable changes to SyncForge are recorded here.
 
 ## [Unreleased]
 
+### Phase 7 - Data integrity, conflict resolution and audit logging (complete)
+
+#### Added
+- Audit log (`audit_logs`, migration `0010`): actor (user or system), action, resource,
+  outcome, details, request ID; written in the same transaction as each change for
+  employees, departments, organization, memberships (permission changes), connectors
+  (including manual operations and reconciliation), workflows, dead-letter replays,
+  workflow executions, scheduled retries, dead letters, circuit-breaker transitions,
+  conflicts and policies. No secrets; personal values only as field names. A trigger makes
+  the table append-only (UPDATE refused except the actor's ON DELETE SET NULL; DELETE only
+  with an explicit retention switch).
+- `GET .../audit-logs` with filters (action or action prefix, resource, actor, outcome,
+  time range); permission `audit:read` (Organization Admin, Integration Manager).
+- Optimistic concurrency for employees: `version` column (migration `0011`), `ETag` on
+  responses, `If-Match` on PATCH, terminate and archive, `412 version_conflict`; row lock +
+  `WHERE version = ...` make the check atomic.
+- Data integrity (migration `0012`): `data_source_policies` (per field: SyncForge or one
+  connector authoritative, severity, manual/auto), `data_conflicts` (one open per
+  employee, connector and field), `conflict_resolutions` (history).
+- `POST .../connectors/{id}/reconcile`: reads linked accounts and records differences as
+  conflicts (never overwrites); self-closing when values agree again; automatic resolution
+  where the policy says so; a terminated person with an active account is always critical.
+- Conflict API: list, detail with history, resolve (`use_syncforge`, `use_external`,
+  `dismiss`) with override + note for decisions against the policy, staleness checks,
+  `employees:write` for adopting values; policies API (`GET`, `PUT` by Organization Admins).
+- Permissions `conflicts:read` (all), `conflicts:resolve` (Integration Manager, Admin),
+  `policies:manage` (Admin).
+- Connectors return department, designation and location from the applications;
+  `ConnectorService.read_external_user`.
+- Demo scenarios 6 (data conflict) and 7 (concurrent edits and the audit trail).
+- 59 new tests (526 total), including a two-session test for simultaneous saves.
+- Documentation: data integrity (docs/14, new), ADR-0017 (audit log), ADR-0018 (optimistic
+  concurrency), ADR-0019 (source of truth and reconciliation); architecture, database, API,
+  connector, reliability, security, troubleshooting and README updated.
+
+#### Changed
+- Employee responses include `version` and an `ETag` header.
+- Integration Managers can read the audit log and resolve conflicts.
+
 ### Phase 6 - Reliability engine and failure recovery (complete)
 
 #### Added

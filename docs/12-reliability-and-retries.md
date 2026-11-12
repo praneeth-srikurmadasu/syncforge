@@ -320,10 +320,11 @@ well above the operation timeout.
 
 ## 10. Seeing it work
 
-`infrastructure/scripts/demo_reliability.py` runs five scenarios against a locally running
+`infrastructure/scripts/demo_reliability.py` runs scenarios against a locally running
 stack and prints what the API and the mocks report: a transient outage, idempotency in
 both directions, retry exhaustion with dead-letter and replay, the circuit breaker, and a
-rate limit. Start PostgreSQL, Redis, the mock services, the API, a worker and the relay
+rate limit (scenarios 1-5, below); scenarios 6 and 7 (a data conflict, concurrent edits,
+the audit trail) are described in [docs/14, section 9](14-data-integrity.md#9-seeing-it-work). Start PostgreSQL, Redis, the mock services, the API, a worker and the relay
 ([docs/09, section 10](09-event-driven-architecture.md#10-running-it-locally)), then from the
 repository root:
 

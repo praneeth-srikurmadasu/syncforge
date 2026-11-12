@@ -6,7 +6,7 @@ SyncForge keeps employee data consistent across HR, Slack, Google Workspace and 
 turning workforce changes (hire, transfer, termination) into reliably processed, audited
 synchronization events.
 
-> **Status: Phase 6 of 10 complete - reliability engine (retries, dead-letter queue and replay, idempotency keys, circuit breaker, rate limits). Next: Phase 7, data integrity, conflict resolution and audit logging.**
+> **Status: Phase 7 of 10 complete - data integrity (audit log, optimistic concurrency, source-of-truth policies, conflict detection and resolution). Next: Phase 8, the Angular frontend.**
 > See [`PROJECT_STATUS.md`](PROJECT_STATUS.md) for exactly what works today.
 
 ## What works today
@@ -50,7 +50,17 @@ synchronization events.
   `POST /employees` with the same `Idempotency-Key` gets the first response back
 - **Circuit breaker** per connector shared by all workers, optional per-connector **rate
   limits**, and a time limit per operation
-- 467 automated tests against a real PostgreSQL database, including two-session
+- **Audit log**: every important change - employees, permissions, connectors, workflows,
+  replays, synchronization outcomes, conflict decisions - is recorded with who did it and
+  the request ID, in the same transaction as the change; append-only, enforced by the
+  database; no secrets or personal values
+- **Optimistic concurrency**: employees carry a version (`ETag`); a save from an outdated
+  screen (`If-Match`) is refused with 412 instead of overwriting someone else's change
+- **Data conflicts**: per-field source-of-truth policies (HR or a specific application,
+  severity, manual or automatic fixing); reconciliation compares each application with
+  SyncForge and records differences instead of overwriting them; conflicts are resolved
+  explicitly, with override, staleness and permission checks, and a full history
+- 526 automated tests against a real PostgreSQL database, including two-session
   concurrency tests, connector tests over real HTTP against the mocks, a real Celery
   worker, and failure simulations (outages, 429, timeouts, crashes, duplicates)
 
@@ -129,10 +139,11 @@ employee: the event appears under `GET .../events` and is processed within about
 How it works: [docs/09](docs/09-event-driven-architecture.md),
 [docs/11](docs/11-workflow-engine.md).
 
-With these four processes and Redis running, the reliability demo injects failures into
-the mocks and shows retries, idempotency, the dead-letter queue and replay, the circuit
-breaker and a rate limit (about two and a half minutes;
-[docs/12, section 10](docs/12-reliability-and-retries.md#10-seeing-it-work)):
+With these four processes and Redis running, the demo injects failures into the mocks and
+shows retries, idempotency, the dead-letter queue and replay, the circuit breaker, a rate
+limit, a data conflict resolved by policy, a refused stale edit and the audit trail (about
+three minutes; [docs/12, section 10](docs/12-reliability-and-retries.md#10-seeing-it-work),
+[docs/14, section 9](docs/14-data-integrity.md#9-seeing-it-work)):
 
 ```powershell
 Set-Location "$HOME\Projects\syncforge"
@@ -189,10 +200,12 @@ backend/
     events/         lifecycle detection, transactional outbox, outbox relay
     workflows/      workflow engine (claim, plan, run steps, record outcomes)
     reliability/    retry policy, dead letter, circuit breaker, rate limit, idempotency
+    integrity/      field comparison rules and default source-of-truth policies
+    audit.py        audit log recorder
     workers/        Celery app and tasks
     cli.py          operator commands (create-superadmin, seed-demo, outbox-relay, purge-expired)
     seed.py         demo data
-  migrations/       Alembic migrations (0001-0009)
+  migrations/       Alembic migrations (0001-0012)
   tests/            pytest suite
 docs/               architecture, database, API, security, ADRs
 frontend/           Angular app (Phase 8)
@@ -214,7 +227,8 @@ docker-compose.yml  local PostgreSQL and Redis (more services added per phase)
 | [Workflow engine](docs/11-workflow-engine.md) | Workflows, executions, job states, processing sequence, failure boundaries |
 | [Reliability and retries](docs/12-reliability-and-retries.md) | Failure classification, backoff and jitter, attempt history, dead-letter queue and replay, circuit breaker, rate limits, timeouts, demo |
 | [Idempotency](docs/13-idempotency.md) | Where duplicates could come from and what stops each; idempotency keys outgoing and incoming |
+| [Data integrity](docs/14-data-integrity.md) | Audit log, optimistic concurrency (ETag / If-Match), source-of-truth policies, reconciliation, conflict resolution |
 | [Security design](docs/15-security-design.md) | Auth flow, JWT lifecycle, passwords, secrets, roles, tenant isolation, connector credentials, SSRF |
 | [Troubleshooting](docs/21-troubleshooting.md) | Investigating failed requests and synchronizations, connector, worker, test and Windows issues |
-| [Architecture decisions](docs/adr/) | ADR-0001 to ADR-0016 |
+| [Architecture decisions](docs/adr/) | ADR-0001 to ADR-0019 |
 | [Project plan](PROJECT_PLAN.md), [Status](PROJECT_STATUS.md), [Changelog](CHANGELOG.md) | Progress tracking |

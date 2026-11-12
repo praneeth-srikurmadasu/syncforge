@@ -1,6 +1,7 @@
-"""Live demonstration of SyncForge's reliability engine (Phase 6).
+"""Live demonstration of SyncForge's reliability engine (Phase 6) and data integrity
+(Phase 7).
 
-Runs five scenarios against a locally running SyncForge (API, outbox relay, Celery worker)
+Runs seven scenarios against a locally running SyncForge (API, outbox relay, Celery worker)
 and the mock Slack / Google Workspace / payroll services, injecting failures through the
 mocks' control API (/_mock/faults). Everything it prints comes from the real API and the
 mocks' request logs; nothing is simulated inside this script.
@@ -11,6 +12,11 @@ mocks' request logs; nothing is simulated inside this script.
     3. Retry exhaustion, dead-letter queue and replay.
     4. The circuit breaker: Google is down for three hires at once.
     5. A per-connector rate limit.
+    6. A data conflict: a payroll clerk changes a department in the payroll system;
+       reconciliation records the conflict, a decision against the policy is refused,
+       HR's value wins and is pushed back to payroll.
+    7. Optimistic concurrency: two admins edit the same employee from the same version;
+       the second save is refused with 412. Then the audit trail of the whole run.
 
 Prerequisites (see docs/12, section 10): PostgreSQL and Redis running, migrations applied,
 and these four processes started from the repository root:
@@ -23,6 +29,7 @@ Run (Windows PowerShell, from the repository root):
 
 With the default settings the whole run takes about two and a half minutes, most of it
 the circuit breaker's 60 s open period and the dead-letter scenario's backoff (2+4+8+16 s).
+Scenarios 6 and 7 take a few seconds.
 Start the worker with CIRCUIT_OPEN_SECONDS=15 to make scenario 4 quicker.
 
 It creates a new user and organization on every run and never deletes anything.
@@ -97,7 +104,7 @@ class Demo:
             and r["path"].rstrip("/").endswith(("/Users", "/users", "/employees"))
         )
 
-    def hire(self, **headers: str) -> str:
+    def hire(self, department_id: str | None = None, **headers: str) -> str:
         n = uuid.uuid4().hex[:8]
         body = {
             "employee_number": f"E-{n}",
@@ -106,6 +113,8 @@ class Demo:
             "email": f"demo.{n}@acme.example",
             "joining_date": "2026-11-01",
         }
+        if department_id:
+            body["department_id"] = department_id
         response = self.call("POST", "/employees", json=body, headers=headers)
         response.raise_for_status()
         return response.json()["id"]
@@ -171,6 +180,92 @@ class Demo:
         print(f"Organization {org['id']}: Slack -> Google Workspace -> payroll onboarding")
 
     # ---- scenarios -------------------------------------------------------------------
+
+    def payroll_record(self, external_id: str) -> httpx.Response:
+        return self.http.request(
+            "GET",
+            f"{self.mocks['payroll']}/v1/employees/{external_id}",
+            headers={"X-API-Key": CREDENTIALS["payroll"]["api_key"]},
+        )
+
+    def data_conflict(self) -> None:
+        print("\n6. Data conflict: someone changes a department directly in payroll")
+        departments = {
+            name: self.call("POST", "/departments", json={"name": name}).json()["id"]
+            for name in ("Engineering", "Finance")
+        }
+        employee = self.hire(department_id=departments["Engineering"])
+        self.wait([employee], show=False)
+        payroll = self.connectors["payroll"]
+        accounts = self.call("GET", f"/connectors/{payroll}/accounts").json()["items"]
+        external_id = next(a["external_id"] for a in accounts if a["employee_id"] == employee)
+        self.http.request(
+            "PATCH",
+            f"{self.mocks['payroll']}/v1/employees/{external_id}",
+            headers={"X-API-Key": CREDENTIALS["payroll"]["api_key"]},
+            json={"department": "Finance"},
+        ).raise_for_status()
+        self.say("a payroll clerk set the department to Finance in the payroll system")
+        run = self.call("POST", f"/connectors/{payroll}/reconcile").json()
+        self.say(
+            f"reconcile: {run['accounts_checked']} accounts checked, "
+            f"{run['conflicts_opened']} conflict opened"
+        )
+        conflict = self.call(
+            "GET", "/conflicts", params={"conflict_status": "open", "employee_id": employee}
+        ).json()["items"][0]
+        self.say(
+            f"conflict: {conflict['field']} - SyncForge {conflict['syncforge_value']!r}, "
+            f"payroll {conflict['external_value']!r}; authority "
+            f"{conflict['authoritative_source']}, severity {conflict['severity']}"
+        )
+        still = self.call("GET", f"/employees/{employee}").json()["department"]["name"]
+        self.say(f"SyncForge still says {still!r}: nothing was overwritten")
+        refused = self.call(
+            "POST", f"/conflicts/{conflict['id']}/resolve", json={"resolution": "use_external"}
+        )
+        self.say(
+            f"adopt payroll's value without override: {refused.status_code} "
+            f"{refused.json()['error']['code']}"
+        )
+        resolved = self.call(
+            "POST", f"/conflicts/{conflict['id']}/resolve", json={"resolution": "use_syncforge"}
+        ).json()
+        now = self.payroll_record(external_id).json()["department"]
+        self.say(f"HR wins: conflict {resolved['status']}; payroll now says {now!r}")
+        again = self.call("POST", f"/connectors/{payroll}/reconcile").json()
+        self.say(f"reconcile again: {again['conflicts_opened']} conflicts opened")
+
+    def concurrent_edits(self) -> None:
+        print("\n7. Optimistic concurrency: two admins edit the same employee")
+        employee = self.hire()
+        etag = self.call("GET", f"/employees/{employee}").headers["ETag"]
+        first = self.call(
+            "PATCH", f"/employees/{employee}", json={"location": "Pune"}, headers={"If-Match": etag}
+        )
+        second = self.call(
+            "PATCH",
+            f"/employees/{employee}",
+            json={"location": "Chennai"},
+            headers={"If-Match": etag},
+        )
+        self.say(
+            f"both loaded version {etag}; first save {first.status_code} "
+            f"(new ETag {first.headers['ETag']})"
+        )
+        error = second.json()["error"]
+        self.say(f"second save: {second.status_code} {error['code']} {error['details']}")
+        location = self.call("GET", f"/employees/{employee}").json()["location"]
+        self.say(f"location is {location!r}: the first change was not overwritten")
+        audit = self.call("GET", "/audit-logs", params={"limit": 100}).json()
+        counts: dict[str, int] = {}
+        for item in audit["items"]:
+            counts[item["action"]] = counts.get(item["action"], 0) + 1
+        shown = ", ".join(f"{action} x{n}" for action, n in sorted(counts.items()))
+        self.say(
+            f"audit log of this run: {audit['total']} entries; "
+            f"the newest {len(audit['items'])}: {shown}"
+        )
 
     def transient_outage(self) -> None:
         print("\n1. Transient outage: payroll answers 503 twice")
@@ -320,6 +415,8 @@ def main() -> int:
     demo.dead_letter_and_replay()
     demo.circuit_breaker()
     demo.rate_limit()
+    demo.data_conflict()
+    demo.concurrent_edits()
     print("\nDone.")
     return 0
 

@@ -1,6 +1,6 @@
 # 07 - Database Design
 
-> **Scope:** tables implemented as of Phase 6 (migrations `0001`-`0009`). Later phases
+> **Scope:** tables implemented as of Phase 7 (migrations `0001`-`0012`). Later phases
 > append their tables here when they are built.
 
 Database: **PostgreSQL 16** (see [ADR-0002](adr/0002-postgresql-as-system-of-record.md)),
@@ -37,6 +37,13 @@ erDiagram
     USERS ||--o{ IDEMPOTENCY_RECORDS : "sent"
     CONNECTORS ||--o| CONNECTOR_CIRCUITS : "protected by"
     CONNECTORS ||--o{ CONNECTOR_RATE_WINDOWS : "paced by"
+    USERS |o--o{ AUDIT_LOGS : "acted"
+    ORGANIZATIONS ||--o{ DATA_SOURCE_POLICIES : "configures"
+    CONNECTORS |o--o{ DATA_SOURCE_POLICIES : "authoritative for"
+    EMPLOYEES ||--o{ DATA_CONFLICTS : "disagrees about"
+    CONNECTORS ||--o{ DATA_CONFLICTS : "reported by"
+    DATA_CONFLICTS ||--o{ CONFLICT_RESOLUTIONS : "decided by"
+    USERS |o--o{ CONFLICT_RESOLUTIONS : "resolved by"
 
     ORGANIZATIONS {
         uuid id PK
@@ -273,6 +280,57 @@ erDiagram
         uuid organization_id FK
         int calls
     }
+    AUDIT_LOGS {
+        bigint id PK
+        uuid organization_id
+        varchar actor_type
+        uuid actor_user_id FK
+        varchar action
+        varchar resource_type
+        varchar resource_id
+        varchar outcome
+        jsonb details
+        varchar request_id
+        timestamptz created_at
+    }
+    DATA_SOURCE_POLICIES {
+        uuid id PK
+        uuid organization_id FK
+        varchar field
+        varchar source
+        uuid connector_id FK
+        varchar resolution_mode
+        varchar severity
+    }
+    DATA_CONFLICTS {
+        uuid id PK
+        uuid organization_id FK
+        uuid employee_id FK
+        uuid connector_id FK
+        varchar field
+        varchar syncforge_value
+        varchar external_value
+        varchar authoritative_source
+        varchar severity
+        varchar status
+        int employee_version
+        timestamptz first_detected_at
+        timestamptz last_detected_at
+        int times_detected
+        timestamptz resolved_at
+    }
+    CONFLICT_RESOLUTIONS {
+        uuid id PK
+        uuid organization_id
+        uuid conflict_id FK
+        varchar resolution
+        varchar applied_value
+        boolean against_policy
+        boolean automatic
+        varchar note
+        uuid resolved_by_user_id FK
+        timestamptz created_at
+    }
 ```
 
 *Users* are people who log in to SyncForge. *Employees* are the workforce records SyncForge
@@ -394,6 +452,7 @@ deleted - the foreign key refuses it and the API returns `409 department_in_use`
 | termination_date | date | yes | | Set exactly when status is `terminated` |
 | archived_at | timestamptz | yes | | Soft delete; set only for terminated employees |
 | created_at / updated_at | timestamptz | no | `now()` | `updated_at` doubles as "last updated" |
+| version | int | no | `1` | Optimistic concurrency (migration `0011`): incremented on every UPDATE by SQLAlchemy `version_id_col`; exposed as the `ETag`; `ck_employees_version_positive` ([docs/14](14-data-integrity.md#3-optimistic-concurrency-on-employees)) |
 
 **Tenant integrity through composite foreign keys.** An employee's department and manager
 must belong to the *same* organization as the employee. Instead of trusting application
@@ -717,6 +776,78 @@ and old finished events after a configurable period is a documented future impro
 Expired `revoked_tokens` and `idempotency_records` rows are deleted by
 `python -m app.cli purge-expired`.
 
+### `audit_logs` - append-only record of actions (Phase 7)
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| id | bigint identity | no | | PK; monotonic, gives a stable newest-first order |
+| organization_id | uuid | no | | **No foreign key**: the history outlives the organization |
+| actor_type | varchar(20) | no | | `user` \| `system` |
+| actor_user_id | uuid | yes | | FK -> users.id **ON DELETE SET NULL** |
+| action | varchar(60) | no | | e.g. `employee.updated`, `member.role_changed`, `conflict.resolved` |
+| resource_type, resource_id | varchar(40), varchar(64) | no / yes | | What was acted on |
+| outcome | varchar(20) | no | | `success` \| `failure` |
+| details | jsonb | no | `'{}'` | IDs, changed field names, error categories; never secrets or personal values |
+| request_id | varchar(128) | yes | | API request ID, or the event's correlation ID in a worker |
+| created_at | timestamptz | no | `now()` | |
+
+Indexes: `(organization_id, created_at)`, `(organization_id, resource_type, resource_id)`,
+`(organization_id, action)`. Trigger `audit_logs_append_only` refuses UPDATE (except the
+actor's `ON DELETE SET NULL`) and DELETE (except after `SET LOCAL
+syncforge.allow_audit_delete = 'on'`). Retention: kept indefinitely today; a retention job
+using the switch above is future work ([docs/14](14-data-integrity.md#2-the-audit-log)).
+
+### `data_source_policies` - which side is authoritative per field (Phase 7)
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| id | uuid | no | PK |
+| organization_id | uuid | no | FK -> organizations.id **ON DELETE CASCADE** |
+| field | varchar(30) | no | One of the seven compared fields (`ck_..._field`); unique per organization |
+| source | varchar(20) | no | `syncforge` \| `connector` |
+| connector_id | uuid | yes | With organization_id composite FK -> connectors **ON DELETE CASCADE**; set exactly when `source = 'connector'` (`ck_..._connector_iff_source`) |
+| resolution_mode | varchar(20) | no | `manual` \| `auto` |
+| severity | varchar(20) | no | `low` \| `medium` \| `high` \| `critical` |
+| created_at / updated_at | timestamptz | no | |
+
+Fields without a row use the defaults in `app/integrity/fields.py`.
+
+### `data_conflicts` - one disagreement per employee, connector and field (Phase 7)
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| id | uuid | no | PK |
+| organization_id, employee_id | uuid | no | Composite FK -> employees **ON DELETE CASCADE** |
+| organization_id, connector_id | uuid | no | Composite FK -> connectors **ON DELETE CASCADE** |
+| field | varchar(30) | no | Compared field |
+| syncforge_value, external_value | varchar(320) | yes | Both values at the last detection (personal data for names/e-mails: never logged or audited) |
+| authoritative_source, severity | varchar(20) | no | From the policy at detection time |
+| status | varchar(20) | no | `open` \| `resolved` \| `dismissed` |
+| employee_version | int | no | The employee's version at detection; adopting a value is refused if it changed |
+| first_detected_at, last_detected_at | timestamptz | no | |
+| times_detected | int | no | Repeated detections refresh the open row |
+| resolved_at | timestamptz | yes | |
+
+Indexes: **partial unique** `uq_data_conflicts_open_employee_connector_field` on
+`(employee_id, connector_id, field) WHERE status = 'open'`; `(organization_id, status)`.
+
+### `conflict_resolutions` - decision history (Phase 7)
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| id | uuid | no | PK |
+| organization_id | uuid | no | |
+| conflict_id | uuid | no | FK -> data_conflicts.id **ON DELETE CASCADE** (indexed) |
+| resolution | varchar(20) | no | `use_syncforge` \| `use_external` \| `dismiss` \| `no_longer_different` |
+| applied_value | varchar(320) | yes | The value both sides now hold |
+| against_policy, automatic | boolean | no | |
+| note | varchar(500) | yes | Required for dismissals and decisions against the policy |
+| resolved_by_user_id | uuid | yes | FK -> users.id **ON DELETE SET NULL**; NULL for automatic resolutions |
+| created_at | timestamptz | no | |
+
+Retention (conflicts, resolutions): kept with the organization; they are the integrity
+history the dashboard shows.
+
 ## 4. Migration strategy
 
 - Every schema change is an **Alembic migration** in `backend/migrations/versions/`,
@@ -773,6 +904,14 @@ Commands (from `backend/`): `alembic upgrade head`, `alembic downgrade -1`,
   describe (`before_commit` hook).
 - **Circuit-breaker and rate-limit rows** are changed in their own short transactions just
   before and after an external call.
+- **Audit entries** are added to the session of the change they describe and commit with
+  it; a rolled-back change leaves no entry.
+- **Optimistic concurrency:** an employee update locks the row, compares the client's
+  `If-Match` version, and writes with `WHERE version = <read>` - one transaction.
+- **Conflict resolution** locks the conflict row while validating the decision; the push
+  to the application (or the employee update) commits on its own, and the conflict is
+  locked again before it is closed. Reconciliation commits once per run (and once per
+  automatic resolution).
 
 ## 6. Test database
 

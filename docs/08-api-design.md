@@ -19,6 +19,8 @@
 | Partial updates | `PATCH` changes only the fields present in the body. Sending `null` clears an optional field; unknown fields are rejected (`422`). |
 | Tenant isolation | Any resource under `/organizations/{organization_id}` returns **404** to non-members, and **403** to members whose role lacks the permission. |
 | Idempotency | `POST .../employees` accepts an optional `Idempotency-Key` header; a repeat returns the stored response with `Idempotent-Replayed: true` ([docs/13](13-idempotency.md)). |
+| Optimistic concurrency | Employee responses carry `ETag: "<version>"`; `PATCH`, terminate and archive accept `If-Match` and answer `412 version_conflict` if the employee changed since ([docs/14](14-data-integrity.md#3-optimistic-concurrency-on-employees)). |
+| Audit | Every change listed in [docs/14](14-data-integrity.md#2-the-audit-log) writes an audit entry in the same transaction. |
 
 ### Error codes in use
 
@@ -78,6 +80,18 @@
 | 409 | `workflow_inactive` | Replay refused: none of the failed workflows is active |
 | 409 | `event_not_dead_lettered` | Replay refused: the event is not in the dead-letter state (invariant guard) |
 | 422 | `idempotency_key_reused` | The `Idempotency-Key` was already used for a different request |
+| 412 | `version_conflict` | `If-Match` was sent and the employee changed since; `details.expected_version`, `details.current_version` |
+| 422 | `invalid_if_match` | `If-Match` is not an ETag returned by this API |
+| 404 | `conflict_not_found` | Data conflict does not exist in this organization |
+| 404 | `field_not_found` | Unknown field in a data-source policy |
+| 409 | `conflict_not_open` | The conflict is already resolved or dismissed |
+| 409 | `conflict_stale` | The employee changed since the conflict was detected; reconcile again |
+| 409 | `connector_disconnected` | (reconcile) the connector has no credentials |
+| 422 | `resolution_against_policy` | Chose the non-authoritative side without `override: true` and a note; `details.authoritative` |
+| 422 | `note_required` | Dismissing, or deciding against the policy, without a note |
+| 422 | `department_not_found` | (conflicts) adopting a department SyncForge does not have |
+| 422 | `reactivation_not_supported` | Pushing "account active" to an application: the connectors cannot reactivate |
+| 422 | `invalid_policy` | `connector_id` missing for `source: connector`, or given for `source: syncforge` |
 | 500 | `internal_error` | Unexpected server error (details only in logs) |
 | 503 | `not_ready` | Readiness check failed (database unreachable) |
 
@@ -224,9 +238,16 @@ ID from another organization returns `404 employee_not_found`, exactly like a ra
   "manager": {"id": "...", "employee_number": "E-1", "full_name": "Ada Lovelace"},
   "location": "Bengaluru", "employment_status": "active",
   "joining_date": "2024-01-15", "termination_date": null, "archived_at": null,
-  "created_at": "2026-11-11T14:09:36.03Z", "updated_at": "2026-11-11T14:09:36.03Z"
+  "created_at": "2026-11-11T14:09:36.03Z", "updated_at": "2026-11-11T14:09:36.03Z",
+  "version": 3
 }
 ```
+
+`GET`, `POST`, `PATCH` and terminate responses also carry `ETag: "3"` (the version).
+`PATCH`, `POST .../terminate` and `DELETE` accept `If-Match: "3"` (also `W/"3"`, `3`, or
+`*` for any version). If the employee's version is different the answer is
+`412 version_conflict` and nothing changes; without `If-Match` the last write wins as
+before ([docs/14, section 3](14-data-integrity.md#3-optimistic-concurrency-on-employees)).
 
 ### `POST .../employees`
 
@@ -525,7 +546,50 @@ replay makes real calls to external applications.
 `non_retryable` (credentials, permissions, invalid data, configuration). Like events, entries
 contain no employee names or emails.
 
-## 11. PowerShell examples
+## 11. Audit log - `/api/v1/organizations/{organization_id}/audit-logs`
+
+| Method and path | Permission | Notes |
+|---|---|---|
+| `GET .../audit-logs` | **`audit:read`** (Organization Admin, Integration Manager) | Newest first. Filters: `action` (exact, or a prefix ending in a dot such as `employee.`), `resource_type`, `resource_id`, `actor_user_id`, `outcome` (`success`, `failure`), `since`, `until`; `limit` (default 50), `offset` |
+
+```json
+{"id": 7, "created_at": "...", "actor_type": "user", "actor_user_id": "...",
+ "action": "employee.updated", "resource_type": "employee", "resource_id": "...",
+ "outcome": "success",
+ "details": {"changed_fields": ["designation"], "events": ["employee.updated"],
+             "values": {"designation": {"from": "Engineer", "to": "Staff Engineer"}}},
+ "request_id": "ad6821ad658d4049a47e12f99052a94e"}
+```
+
+Read-only: there is no endpoint (and, thanks to a trigger, no SQL) that changes entries.
+The list of actions and what each records: [docs/14, section 2](14-data-integrity.md#2-the-audit-log).
+
+## 12. Data integrity - policies, reconciliation, conflicts
+
+| Method and path | Permission | Notes |
+|---|---|---|
+| `GET .../data-source-policies` | `conflicts:read` | The effective policy for each of the seven fields (`configured: false` = built-in default) |
+| `PUT .../data-source-policies/{field}` | **`policies:manage`** (Organization Admin) | `{"source": "syncforge" \| "connector", "connector_id": ..., "resolution_mode": "manual" \| "auto", "severity": "low" \| "medium" \| "high" \| "critical"}` |
+| `POST .../connectors/{connector_id}/reconcile` | `conflicts:resolve` | Compare linked accounts with the application (up to 500). Returns `accounts_checked`, `conflicts_opened`, `conflicts_refreshed`, `conflicts_closed`, `auto_resolved`, `errors` |
+| `GET .../conflicts` | `conflicts:read` | Filters: `conflict_status` (`open`, `resolved`, `dismissed`), `severity`, `field`, `employee_id`, `connector_id` |
+| `GET .../conflicts/{conflict_id}` | `conflicts:read` | The conflict with its `resolutions` history |
+| `POST .../conflicts/{conflict_id}/resolve` | `conflicts:resolve` (+ `employees:write` for `use_external`, except `account_active`) | `{"resolution": "use_syncforge" \| "use_external" \| "dismiss", "note": "...", "override": false}` |
+
+Conflict object:
+
+```json
+{"id": "...", "employee_id": "...", "connector_id": "...", "field": "department",
+ "syncforge_value": "Engineering", "external_value": "Finance",
+ "authoritative_source": "syncforge", "severity": "medium", "status": "open",
+ "employee_version": 1, "first_detected_at": "...", "last_detected_at": "...",
+ "times_detected": 1, "resolved_at": null}
+```
+
+Resolution rules and errors (`resolution_against_policy`, `note_required`,
+`conflict_stale`, `department_not_found`, `reactivation_not_supported`,
+`conflict_not_open`, `502` when the application refuses): [docs/14, section 6](14-data-integrity.md#6-conflict-resolution).
+
+## 13. PowerShell examples
 
 ```powershell
 $base = "http://127.0.0.1:8000/api/v1/auth"
@@ -595,4 +659,23 @@ $r.StatusCode; $r.Headers["Idempotent-Replayed"]
 $dlq = "$api/organizations/$($org.id)/dead-letter-events"
 $open = Invoke-RestMethod "${dlq}?entry_status=open" -Headers $h
 Invoke-RestMethod -Method Post "$dlq/$($open.items[0].id)/replay" -Headers $h
+```
+
+```powershell
+# Optimistic concurrency: save only if nobody changed the employee since you read it
+# (Ada from the idempotency example above; Grace was terminated earlier)
+$ada = $r.Content | ConvertFrom-Json
+$e = Invoke-WebRequest "$emp/$($ada.id)" -Headers $h
+$etag = $e.Headers["ETag"]
+Invoke-RestMethod -Method Patch "$emp/$($ada.id)" -Headers ($h + @{ "If-Match" = $etag }) `
+  -ContentType "application/json" -Body '{"location":"Pune"}'
+
+# Data integrity: reconcile a connector, list open conflicts, let HR's value win
+Invoke-RestMethod -Method Post "$con/$($slack.id)/reconcile" -Headers $h
+$open = Invoke-RestMethod "$api/organizations/$($org.id)/conflicts?conflict_status=open" -Headers $h
+Invoke-RestMethod -Method Post "$api/organizations/$($org.id)/conflicts/$($open.items[0].id)/resolve" `
+  -Headers $h -ContentType "application/json" -Body '{"resolution":"use_syncforge"}'
+
+# Audit trail of employee changes
+Invoke-RestMethod "$api/organizations/$($org.id)/audit-logs?action=employee." -Headers $h
 ```

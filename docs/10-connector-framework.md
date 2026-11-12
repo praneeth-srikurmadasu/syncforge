@@ -112,6 +112,13 @@ payroll `PR-...`) is stored in `external_accounts`, keyed by (connector, employe
 Updates and deactivations use that stored ID. Email is not a stable key, because people
 change emails.
 
+`get_user` (and every operation) returns an `ExternalUser`: external ID, e-mail, first and
+last name, active flag, and - where the application stores them - department, designation
+and location (`None` when it does not: Slack has no location, payroll has all three).
+Reconciliation compares these with SyncForge's record
+([docs/14, section 5](14-data-integrity.md#5-conflict-detection-reconciliation));
+`ConnectorService.read_external_user` reads one account through the circuit breaker.
+
 ## 4. Error normalization
 
 Every failure becomes a `ConnectorError` with a **category**. The category decides whether

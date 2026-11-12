@@ -1,6 +1,6 @@
 # 15 - Security Design
 
-> **Scope:** controls implemented as of Phase 6. The "Not yet implemented" table at the
+> **Scope:** controls implemented as of Phase 7. The "Not yet implemented" table at the
 > end lists what later phases add - those items are not claimed as done.
 
 ## 1. Authentication flow
@@ -70,6 +70,10 @@ end a session; the cost is one primary-key lookup per request.
 
 - Response schemas list fields explicitly; `password_hash` cannot be serialized.
 - Validation errors report field names and reasons, never submitted values.
+- Data conflicts store both sides' values (names and e-mails included) because a person
+  must see them to decide; they are shown to members who may see employees anyway, and
+  are never logged or written to the audit log (only department, designation, location
+  and account status values are audited).
 - Unexpected errors return a generic `internal_error`; tracebacks go to logs only.
 - Logs record user IDs and token IDs (`jti`), never passwords, hashes, tokens or emails.
 - `User.__repr__` omits the email so PII does not leak into tracebacks.
@@ -154,9 +158,13 @@ Endpoints check a **permission**, never a role name. The mapping lives in one pl
 | `workflows:manage` - create, edit, activate, deactivate workflows | no | **yes** | yes | yes |
 | `events:read` - list and view integration events with their executions, attempts and the dead-letter queue | yes | yes | yes | yes |
 | `events:replay` - replay a dead-lettered event (causes real calls to external applications) | no | **yes** | yes | yes |
+| `audit:read` - read the organization's audit log (shows other people's actions and permission changes) | no | **yes** | yes | yes |
+| `conflicts:read` - view data conflicts and source-of-truth policies | yes | yes | yes | yes |
+| `conflicts:resolve` - run reconciliation, resolve conflicts (adopting a value into an employee record also needs `employees:write`) | no | **yes** | yes | yes |
+| `policies:manage` - decide which system is authoritative per field | no | no | yes | yes |
 
-Integration Managers operate integrations (connectors and workflows) but do not manage
-people, departments or the organization itself; `test_role_permission_matrix` pins that
+Integration Managers operate integrations (connectors, workflows, replays, conflicts) but do
+not manage people, departments, policies or the organization itself; `test_role_permission_matrix` pins that
 they cannot write employees.
 
 **Super Admin** is a platform-wide flag (`users.is_superadmin`), not a membership role. It
@@ -207,6 +215,23 @@ flowchart TD
 
 See [ADR-0005](adr/0005-organization-level-data-isolation.md) for the design decision.
 
+### Audit log
+
+Implemented in Phase 7 ([docs/14, section 2](14-data-integrity.md#2-the-audit-log)): every
+permission change (`member.added`, `member.role_changed` with from/to role,
+`member.removed`), connector change (credentials only as "rotated"), employee change,
+workflow change, replay, conflict decision and policy change is written to `audit_logs`
+in the same transaction as the change, with the acting user (or the system) and the
+request ID. Super Admins acting in an organization are recorded like any user. Entries
+never contain secrets or personal values, and a database trigger makes the table
+append-only - `UPDATE` and `DELETE` are refused even from SQL.
+
+### Concurrent edits
+
+Employee updates accept `If-Match`; a save based on an outdated version is refused with
+`412` instead of silently overwriting another person's change
+([docs/14, section 3](14-data-integrity.md#3-optimistic-concurrency-on-employees)).
+
 ### The "last Organization Admin" rule
 
 An organization must always keep at least one Organization Admin; demoting or removing the
@@ -222,7 +247,8 @@ lock is removed.
 |---|---|
 | Rate limiting on login/register | Phase 9 |
 | Request body size limits | Phase 9 |
-| Audit log of security-relevant actions (including Super Admin actions) | Phase 7 |
+| Audit entries for login, logout and failed logins (not organization-scoped; today in the structured logs only) | Phase 9 |
+| Audit log retention job (the trigger already provides the switch for it) | Future improvement |
 | Field-level masking of employee personal data for low-privilege roles | Future improvement |
 | Invitations for people who are not registered yet | Future improvement |
 | Secrets manager / envelope encryption for the connector key; bulk re-encryption command | Future improvement |

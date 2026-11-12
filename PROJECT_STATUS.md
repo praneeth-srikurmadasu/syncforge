@@ -1,6 +1,6 @@
 # SyncForge - Project Status
 
-**Current phase:** 7 in progress - Data integrity, conflict resolution and audit logging
+**Current phase:** 7 complete - awaiting approval to start Phase 8 (Angular frontend). Before Phase 8 starts, the frontend's look and behaviour are to be agreed with the project owner.
 **Last updated:** 2026-11-12
 
 | Phase | Status |
@@ -11,8 +11,52 @@
 | 4 - Connector framework and mock services | Complete |
 | 5 - Workflow engine and event processing | Complete |
 | 6 - Reliability engine and failure recovery | Complete |
-| 7 - Data integrity, conflicts, audit logging | In progress (Part 1 of 4: audit log) |
-| 8-10 | Not started |
+| 7 - Data integrity, conflicts, audit logging | Complete (Part 4 delivered; Windows verification of Part 4 pending) |
+| 8 - Angular frontend | Next (awaiting approval and design discussion) |
+| 9-10 | Not started |
+
+## Phase 7 progress
+
+| Part | Scope | Status | Verified on |
+|---|---|---|---|
+| 1 | Append-only audit log (`audit_logs`, migration `0010`): written in the same transaction as each change, user or system actor, request ID, no secrets or personal values, trigger refusing UPDATE/DELETE; `GET .../audit-logs`; `audit:read` | Done | Windows 11, Python 3.13.17, Docker PostgreSQL 16, Redis 7 |
+| 2 | Optimistic concurrency on employees: `version` (migration `0011`), `ETag`, `If-Match` on PATCH / terminate / archive, `412 version_conflict` | Done | same |
+| 3 | Field-level source-of-truth policies, reconciliation (conflict detection), resolution with override / staleness / permission checks, history (`data_source_policies`, `data_conflicts`, `conflict_resolutions`, migration `0012`); connectors read back department, designation, location; `conflicts:read`, `conflicts:resolve`, `policies:manage` | Done | same |
+| 4 | docs/14, ADR-0017 to ADR-0019, updates to docs 05, 07, 08, 10, 12, 15, 21, README; demo scenarios 6 (data conflict) and 7 (concurrent edits, audit trail) | Done | Linux development workspace; Windows run pending (this delivery) |
+
+### Phase 7 verification (actual results)
+
+- Windows, after each part: `ruff check .` clean, `alembic check` no drift after migrations
+  `0010`, `0011`, `0012`; `python -m pytest`: **484, 496, 526 passed**.
+- Live runs in the Linux workspace with the API, worker, relay, Redis and the mocks as
+  separate processes:
+  - audit: user actions with their request IDs; the worker's `workflow.executed` entry
+    carried the hire's request ID (`p7-audit-hire`) and the system as actor;
+  - data conflict: a department changed through the payroll mock's own API was detected
+    by reconciliation (SyncForge unchanged), adopting payroll's value without override was
+    refused (`422 resolution_against_policy`), HR's value was pushed back to payroll, the
+    next reconciliation found no conflict; all of it in the audit log;
+  - the full demo (seven scenarios, 2.7 minutes): concurrent edits from the same version -
+    first save `200`, second `412 version_conflict`, first change kept; 61 audit entries
+    for the run (docs/14 section 9).
+
+## Phase 7 acceptance criteria
+
+| Criterion | Evidence |
+|---|---|
+| Field-level source-of-truth policies, configurable (no universal truth) | `data_source_policies`, defaults in `integrity/fields.py`; `test_api_policies`, `test_an_identity_provider_can_be_authoritative_for_account_status` |
+| Conflict detection, history, severity | `services/conflicts.py` reconcile; `test_a_difference_is_recorded_not_overwritten`, `test_a_repeated_detection_refreshes_the_same_conflict`, `test_a_terminated_person_still_active_in_slack_is_critical_and_can_be_deactivated` |
+| Configurable resolution policies; manual resolution | manual / auto mode; `test_auto_mode_applies_the_authoritative_value_at_once`, `test_hr_wins_pushes_syncforges_value_to_the_application`, `test_when_the_application_is_authoritative_its_value_is_adopted` |
+| Incorrect resolution attempts refused | `test_deciding_against_the_policy_needs_override_and_a_note`, `test_dismissing_needs_a_note_and_a_closed_conflict_stays_closed`, `test_an_unknown_department_is_not_invented` |
+| Concurrent update protection; optimistic concurrency | `test_optimistic_concurrency.py`; two-session `test_simultaneous_saves_from_the_same_version_let_exactly_one_win`; `conflict_stale` tests |
+| Conflict audit trail | `conflict.detected` / `.resolved` / `.dismissed` entries; `test_personal_values_never_reach_the_audit_log` |
+| Audit log of employee, connector, workflow, failure, retry, conflict and permission changes, with organization, actor, action, resource, time, details, outcome | `test_audit.py` |
+| No secrets or unnecessary personal data in audit entries | `test_employee_lifecycle_is_audited_without_personal_values`, `test_connector_changes_are_audited_without_secrets` |
+| Append-only through the application (and the database) | no update/delete code paths; trigger; `test_entries_cannot_be_updated`, `test_entries_cannot_be_deleted_except_by_an_explicit_retention_transaction` |
+| APIs: conflicts list, detail, resolve; audit logs | docs/08 sections 11-12; API tests |
+| Authorization | `test_api_requires_audit_read`, `test_adopting_into_the_employee_record_needs_employees_write`, `test_api_reconcile_list_detail_and_resolve`, role matrix |
+| Source-of-truth strategy, detection algorithm, policies, concurrency control, audit model, consistency guarantees and limitations documented | docs/14, ADR-0017 to ADR-0019 |
+| A complete conflict detection and resolution scenario demonstrated | live runs above |
 
 ## Phase 6 progress
 
@@ -281,8 +325,12 @@
   Google need real tenants and, for Google, the JWT-bearer grant (docs/10 section 1).
 - OAuth tokens are cached per process; the browser authorization-code flow is not implemented.
 - The SSRF allowlist matches host names, not resolved IP addresses.
-- Two admins changing the same employee field from stale screens: last write wins
-  (optimistic concurrency is Phase 7).
+- Optimistic concurrency covers employees; clients that send no `If-Match` still get
+  last-write-wins (the Phase 8 UI will always send it).
+- Reconciliation runs on demand (or as scheduled by the operator), up to 500 accounts per
+  run, seven fields; conflicts are found when it runs, not instantly.
+- Login, logout and failed logins are not in the audit log (structured logs only) - Phase 9.
+- No retention job for audit, conflict, event or execution history yet.
 - Termination is final; rehiring means creating a new employee record.
 - Free-text employee search is a substring scan within one organization (no trigram index).
 - Members can only be added if they already registered (no email invitations yet).
@@ -290,5 +338,5 @@
 - No refresh tokens: users log in again after 30 minutes.
 - One unidentified intermittent test failure seen once at the end of Phase 5 (Linux
   workspace, 1 of 15 full runs, test name not captured). It has not reappeared in any
-  Phase 6 run (Windows and Linux). To be pinned down in the Phase 9 quality pass if it
+  Phase 6 or Phase 7 run (Windows and Linux). To be pinned down in the Phase 9 quality pass if it
   returns.

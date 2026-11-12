@@ -1,6 +1,6 @@
 # 21 - Troubleshooting
 
-> **Scope:** problems actually met while building and running SyncForge (Phases 1-6), with
+> **Scope:** problems actually met while building and running SyncForge (Phases 1-7), with
 > their causes and fixes. Later phases add their own entries.
 
 ## Investigating a failed request
@@ -53,6 +53,22 @@ including connector calls (`syncforge.connectors`) and the outbound HTTP request
 | `409 workflow_inactive` on replay | None of the workflows that failed is active | Fix the configuration, activate the workflow, replay again |
 | A step fails with `in_progress` (409 `idempotency_key_in_use`) | An earlier attempt with the same idempotency key is still running at the application (it timed out on our side) | Expected and retryable: a later attempt receives the original result |
 | The demo script times out waiting for events | The worker or the relay is not running, or a mock fault is still queued | Start them (docs/09, section 10); `DELETE http://127.0.0.1:910x/_mock/faults` |
+
+## Audit log, concurrent edits, data conflicts
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `412 version_conflict` when saving an employee | Someone changed the employee after you loaded it (`details` shows both versions) | Reload, re-apply your change, save with the new `ETag` in `If-Match` |
+| `422 invalid_if_match` | `If-Match` is not an ETag from this API | Send the `ETag` header value exactly, e.g. `"3"` |
+| `403` on `GET .../audit-logs` | Viewers do not have `audit:read` | Ask an Organization Admin or Integration Manager |
+| `audit_logs is append-only (UPDATE refused)` / `(DELETE refused)` from SQL or a migration | The table is append-only by design (trigger) | Do not change history. A retention job must run `SET LOCAL syncforge.allow_audit_delete = 'on'` in its own transaction |
+| Who did it? | | `GET .../audit-logs?resource_type=employee&resource_id=<id>`; `request_id` in an entry finds the matching API and worker log lines |
+| `422 resolution_against_policy` | The policy names the other side as authoritative for this field | Use the authoritative side, or send `override: true` with a note; or change the policy (Org Admin) |
+| `409 conflict_stale` | The employee changed after the conflict was detected | Run `POST .../connectors/{id}/reconcile` again and decide on the refreshed conflict |
+| `422 department_not_found` when adopting a department | SyncForge has no department with that name | Create the department first, or keep SyncForge's value |
+| `422 reactivation_not_supported` | Connectors cannot re-enable accounts | Reactivate the account in the application, or adopt its state (`use_external`) |
+| Reconcile reports `errors` with `not_found` | The account was deleted in the application | Re-provision (create the account again) or unlink; investigate who deleted it there |
+| Reconcile stops early with `circuit_open` | The application is failing; its circuit breaker is open | Wait for the open period or run a connection test once it is back, then reconcile again |
 
 ## API calls from PowerShell
 
