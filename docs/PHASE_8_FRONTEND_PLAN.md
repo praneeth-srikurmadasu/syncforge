@@ -195,7 +195,7 @@ SVG - the `lucide-angular` package does not yet support Angular 22.
 ## 12. Charts
 
 Apache ECharts 6 through `ngx-echarts` 22 (supports Angular 22), wrapped in one
-`<sf-chart>` component that applies the theme tokens, handles loading / empty / error
+`<sf-bar-chart>` component that applies the theme tokens, handles loading / empty / error
 states and resizes with its container. Charts only show real data:
 
 | Chart | Data source |
@@ -208,6 +208,12 @@ states and resizes with its container. Charts only show real data:
 | Dead-letter entries by error category | `dead-letter-events?entry_status=open` (current page) |
 | Department employee distribution | `departments` (`employee_count`) |
 | Employment status distribution | `employees` totals per status |
+
+*As built (milestone 4):* the dashboard draws four charts — workflow executions per day,
+retries per day, events by status, employees by department. Connector health, conflicts by
+severity and employment status are shown as tables and figures rather than charts;
+dead-letter categories appear on the dead-letter screens. See
+[PHASE_8_FRONTEND_COMPONENTS.md](PHASE_8_FRONTEND_COMPONENTS.md).
 
 ## 13. Error handling
 

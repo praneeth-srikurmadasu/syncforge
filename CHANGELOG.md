@@ -4,7 +4,7 @@ All notable changes to SyncForge are recorded here.
 
 ## [Unreleased]
 
-### Phase 8 - Angular frontend (in progress)
+### Phase 8 - Angular frontend (complete)
 
 #### Added
 - `docs/PHASE_8_FRONTEND_PLAN.md`: repository audit, API inventory, permission matrix,
@@ -41,8 +41,14 @@ All notable changes to SyncForge are recorded here.
   the real API, worker, relay and mock services, each on a freshly provisioned tenant, plus
   axe accessibility checks (14 pages, both themes) and a 390 px phone layout check.
   Results in `docs/PHASE_8_FRONTEND_TESTING.md`.
+- Frontend documentation: `docs/PHASE_8_FRONTEND_ARCHITECTURE.md`, `_COMPONENTS.md`,
+  `_API_INTEGRATION.md`, `_REPORT.md`; ADR-0020 (signals and server state, generated API
+  types); README screenshots (`docs/screenshots/`) and instructions for running the web
+  application.
 
 #### Changed
+- Conflict history shows readable decisions ("Kept SyncForge's value", "Used the
+  application's value", "Dismissed") instead of the API's raw values.
 - Colour tokens raised to WCAG AA contrast in both themes; danger buttons use a new solid
   danger colour.
 - Every data table scrolls inside its own container, so pages fit a 390 px phone screen.

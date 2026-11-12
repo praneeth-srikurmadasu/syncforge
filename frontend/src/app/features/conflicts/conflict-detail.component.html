@@ -187,7 +187,7 @@
           @for (r of c.resolutions; track r.id) {
             <li>
               <div class="row">
-                <strong>{{ humanize(r.resolution) }}</strong>
+                <strong>{{ resolutionLabel(r.resolution) }}</strong>
                 @if (r.automatic) {
                   <sf-badge tone="info">Automatic</sf-badge>
                 }

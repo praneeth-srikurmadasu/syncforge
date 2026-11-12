@@ -47,6 +47,16 @@ export class ConflictDetailComponent {
   private readonly orgApi = inject(OrganizationsApi);
   private readonly toast = inject(ToastService);
   protected readonly humanize = humanize;
+
+  /** History wording for the API's resolution values. */
+  protected resolutionLabel(resolution: string): string {
+    const labels: Record<string, string> = {
+      use_syncforge: "Kept SyncForge's value",
+      use_external: "Used the application's value",
+      dismiss: 'Dismissed',
+    };
+    return labels[resolution] ?? humanize(resolution);
+  }
   protected readonly fieldLabel = fieldLabel;
 
   protected readonly conflict = httpResource<ConflictDetail>(() =>

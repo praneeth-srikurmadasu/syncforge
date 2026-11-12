@@ -6,10 +6,43 @@ SyncForge keeps employee data consistent across HR, Slack, Google Workspace and 
 turning workforce changes (hire, transfer, termination) into reliably processed, audited
 synchronization events.
 
-> **Status: Phase 7 of 10 complete - data integrity (audit log, optimistic concurrency, source-of-truth policies, conflict detection and resolution). Next: Phase 8, the Angular frontend.**
+> **Status: Phase 8 of 10 complete - the Angular administration application on top of the backend from Phases 2-7. Next: Phase 9, security hardening, API versioning and observability.**
 > See [`PROJECT_STATUS.md`](PROJECT_STATUS.md) for exactly what works today.
 
+## Screenshots
+
+Real screens of the running application against the local stack (the connectors are the
+**simulated** local services).
+
+| | |
+|---|---|
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Event detail](docs/screenshots/event-detail.png) |
+| Dashboard: every figure and chart read from the API | An onboarding event: three connector steps and every attempt |
+| ![Dead-letter entry](docs/screenshots/dead-letter.png) | ![Conflict, light theme](docs/screenshots/conflict.png) |
+| A dead-lettered step after five failed attempts, then replayed | A department conflict between SyncForge and payroll, light theme |
+
 ## What works today
+
+### Web application (Angular)
+
+- Sign-up, sign-in and sign-out with server-side revocation, session-expiry warning, and
+  return to the requested page after signing in again
+- Every screen scoped to an organization in the URL; membership checked by the API;
+  navigation and actions shown according to the user's role
+- Dashboard built only from real API data, including 7-day workflow and retry history
+  read from the audit log
+- Employees (search, filters in the URL, add / edit with concurrent-edit protection,
+  terminate, archive), departments, reporting lines
+- Connectors (forms generated from each connector type's schema, connection test,
+  manual operations, reconcile, disconnect), workflows (step builder, activate /
+  deactivate, execution history), event monitor with per-attempt detail
+- Reliability overview, dead-letter queue with replay, data conflicts with
+  policy-aware resolution, source-of-truth policies, audit log, team and roles, settings
+- Dark and light themes, collapsible sidebar, phone layouts, WCAG AA colour contrast
+- 57 unit tests and a 13-test browser suite (Playwright) that runs against the real
+  stack, including automated accessibility checks
+
+### Backend
 
 - FastAPI backend with structured JSON logs, request IDs and one consistent error format
 - `/health` (liveness) and `/ready` (database readiness) probes
@@ -60,7 +93,7 @@ synchronization events.
   severity, manual or automatic fixing); reconciliation compares each application with
   SyncForge and records differences instead of overwriting them; conflicts are resolved
   explicitly, with override, staleness and permission checks, and a full history
-- 526 automated tests against a real PostgreSQL database, including two-session
+- 527 automated tests against a real PostgreSQL database, including two-session
   concurrency tests, connector tests over real HTTP against the mocks, a real Celery
   worker, and failure simulations (outages, 429, timeouts, crashes, duplicates)
 
@@ -74,7 +107,8 @@ synchronization events.
 | Integrations | httpx2 (HTTP client), cryptography (Fernet credential encryption) | in use |
 | Testing | Pytest, Starlette TestClient | in use |
 | Background jobs | Redis 7 (broker), Celery 5.7 (workers) | in use |
-| Frontend | Angular 22, TypeScript | Phase 8 |
+| Frontend | Angular 22, TypeScript, Angular CDK, ECharts 6 | in use |
+| Frontend testing | Vitest, Playwright, axe-core | in use |
 | CI | GitHub Actions | Phase 10 |
 
 ## Quick start (Windows PowerShell)
@@ -150,6 +184,21 @@ Set-Location "$HOME\Projects\syncforge"
 & "$HOME\Projects\syncforge\backend\.venv\Scripts\python.exe" infrastructure\scripts\demo_reliability.py
 ```
 
+### Run the web application
+
+Prerequisites: Node.js 22 LTS and npm. With the API running (and, for provisioning, the
+mocks, worker and relay above), in another terminal:
+
+```powershell
+Set-Location "$HOME\Projects\syncforge\frontend"
+npm ci
+npm start
+```
+
+Open **http://localhost:4200**, create an account, then an organization. The dev server
+forwards `/api` to the API on port 8000. Frontend commands and the browser test suite:
+[frontend/README.md](frontend/README.md).
+
 Optional - load demo data. Register a user first (for example through `/docs`), then:
 
 ```powershell
@@ -184,6 +233,16 @@ ruff format --check .   # formatting
 python -m pytest -v     # tests (uses a separate syncforge_test database)
 ```
 
+From `frontend/`:
+
+```powershell
+npm run test:ci         # unit tests
+npx ng lint             # lint, including template accessibility rules
+npm run format:check    # formatting
+npx ng build            # production build with size budgets
+npm run e2e             # browser tests (needs the whole stack running)
+```
+
 ## Repository layout
 
 ```
@@ -208,7 +267,7 @@ backend/
   migrations/       Alembic migrations (0001-0012)
   tests/            pytest suite
 docs/               architecture, database, API, security, ADRs
-frontend/           Angular app (Phase 8)
+frontend/           Angular application (src/app: core, layout, shared, features; e2e/ browser tests)
 mock-services/      mock Slack / Google Workspace / payroll APIs (simulated, failure injection)
 infrastructure/     scripts (scripts/demo_reliability.py); Dockerfiles in Phase 10
 docker-compose.yml  local PostgreSQL and Redis (more services added per phase)
@@ -230,5 +289,11 @@ docker-compose.yml  local PostgreSQL and Redis (more services added per phase)
 | [Data integrity](docs/14-data-integrity.md) | Audit log, optimistic concurrency (ETag / If-Match), source-of-truth policies, reconciliation, conflict resolution |
 | [Security design](docs/15-security-design.md) | Auth flow, JWT lifecycle, passwords, secrets, roles, tenant isolation, connector credentials, SSRF |
 | [Troubleshooting](docs/21-troubleshooting.md) | Investigating failed requests and synchronizations, connector, worker, test and Windows issues |
-| [Architecture decisions](docs/adr/) | ADR-0001 to ADR-0019 |
+| [Frontend plan](docs/PHASE_8_FRONTEND_PLAN.md) | Screen-to-endpoint map, permission matrix, features the API does not support |
+| [Frontend architecture](docs/PHASE_8_FRONTEND_ARCHITECTURE.md) | Layers, routing, session, authorization, state, errors, design system |
+| [Frontend components](docs/PHASE_8_FRONTEND_COMPONENTS.md) | Shared components and every page with the API calls behind it |
+| [Frontend API integration](docs/PHASE_8_FRONTEND_API_INTEGRATION.md) | Generated types, endpoint map, headers, paging, errors, polling |
+| [Frontend testing](docs/PHASE_8_FRONTEND_TESTING.md) | Test layers, browser suite, accessibility findings and results |
+| [Phase 8 report](docs/PHASE_8_FRONTEND_REPORT.md) | What was delivered, verification, limitations |
+| [Architecture decisions](docs/adr/) | ADR-0001 to ADR-0020 |
 | [Project plan](PROJECT_PLAN.md), [Status](PROJECT_STATUS.md), [Changelog](CHANGELOG.md) | Progress tracking |

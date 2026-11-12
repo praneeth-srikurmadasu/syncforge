@@ -1,6 +1,6 @@
 # SyncForge - Project Status
 
-**Current phase:** 8 in progress - Angular frontend. Milestones 1-9 delivered (1-8 pushed, commit `e06e838`); 10 next.
+**Current phase:** 8 complete - Angular frontend (report: `docs/PHASE_8_FRONTEND_REPORT.md`). Next: Phase 9, awaiting approval.
 **Last updated:** 2026-11-12
 
 | Phase | Status |
@@ -12,7 +12,7 @@
 | 5 - Workflow engine and event processing | Complete |
 | 6 - Reliability engine and failure recovery | Complete |
 | 7 - Data integrity, conflicts, audit logging | Complete |
-| 8 - Angular frontend | In progress (milestones 1-8 of 10 delivered) |
+| 8 - Angular frontend | Complete |
 | 9-10 | Not started |
 
 ## Phase 8 progress
@@ -32,9 +32,15 @@ Plan, screen-to-endpoint map and unsupported features: `docs/PHASE_8_FRONTEND_PL
 | 7a | Owner request: collapsible sidebar (icons-only rail on screens wider than 900 px, state kept in the browser; drawer on small screens unchanged) | Done |
 | 8 | Data integrity and governance: conflicts list (status, severity, field, application filters) and conflict page (side-by-side values with the authoritative side marked, decide: keep SyncForge's value / use the application's / dismiss, override and note enforced as the API requires, employees:write hint, stale-conflict link to reconcile, history); source-of-truth policies (per field: authoritative system, severity, manual / automatic); audit log (action group, resource, actor, outcome, time range, expandable details, links to the resource); team and roles (add registered users, change roles, remove, own-role and last-admin handling); settings (rename organization, account, memberships, session end, theme, sign out) | Done |
 | 9 | Quality: Playwright browser suite against the real stack (13 tests: auth, isolation, workforce, integrations, workflow provisioning, dead-letter replay, conflict resolution, viewer RBAC), axe WCAG 2 A/AA checks on 14 pages in both themes, 390 px phone layout check; fixed colour contrast (tokens), phone overflow (tables in scroll containers, chart table), navigation landmark label. Report: `docs/PHASE_8_FRONTEND_TESTING.md` | Done |
-| 10 | Architecture, components and API-integration documents, final Phase 8 report | Next |
+| 10 | `docs/PHASE_8_FRONTEND_ARCHITECTURE.md`, `_COMPONENTS.md`, `_API_INTEGRATION.md`, `_REPORT.md`, ADR-0020, README (screenshots, running the web application), readable conflict-resolution labels in the history | Done |
 
-### Phase 8 verification so far (actual results)
+### Phase 8 verification (actual results)
+- Windows, project owner (commit `60d96af`): `npm run e2e` **13 passed** (4.1 min);
+  `npm run test:ci` **57 passed**; lint and format clean; build identical to Linux
+  (351.66 kB / 96.10 kB).
+- Milestone 10, Linux workspace: `npm run test:ci` **57 passed**, lint clean; backend
+  `python -m pytest` **527 passed**; screenshots in `docs/screenshots/` taken from the
+  running stack.
 - Milestone 9, Linux workspace (2026-11-12): `npm run e2e` **13 passed** on two consecutive
   runs (2.5 min each) after fixes; first run had been 4 passed / 9 failed (contrast,
   phone overflow, landmark label, plus test selector and timing mistakes - see

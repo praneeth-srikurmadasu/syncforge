@@ -1,193 +1,17 @@
-# SyncForge
+# SyncForge frontend
 
-**Universal Workforce Integration & Synchronization Platform**
+Angular 22 administration application for SyncForge. It talks only to the SyncForge API;
+every figure and list on screen comes from an existing backend endpoint.
 
-SyncForge keeps employee data consistent across HR, Slack, Google Workspace and payroll by
-turning workforce changes (hire, transfer, termination) into reliably processed, audited
-synchronization events.
+The plan, the screen-to-endpoint map and the list of unsupported features are in
+[`docs/PHASE_8_FRONTEND_PLAN.md`](../docs/PHASE_8_FRONTEND_PLAN.md).
 
-> **Status: Phase 8 of 10 complete - the Angular administration application on top of the backend from Phases 2-7. Next: Phase 9, security hardening, API versioning and observability.**
-> See [`PROJECT_STATUS.md`](PROJECT_STATUS.md) for exactly what works today.
+## Requirements
 
-## Screenshots
+- Node.js `^22.22.3`, `^24.15.0` or 26+ (the Angular 22 requirement). Built and tested with 22.23.4; Node 24.18 is also in range
+- The SyncForge API running on `http://127.0.0.1:8000` (see the repository README)
 
-Real screens of the running application against the local stack (the connectors are the
-**simulated** local services).
-
-| | |
-|---|---|
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Event detail](docs/screenshots/event-detail.png) |
-| Dashboard: every figure and chart read from the API | An onboarding event: three connector steps and every attempt |
-| ![Dead-letter entry](docs/screenshots/dead-letter.png) | ![Conflict, light theme](docs/screenshots/conflict.png) |
-| A dead-lettered step after five failed attempts, then replayed | A department conflict between SyncForge and payroll, light theme |
-
-## What works today
-
-### Web application (Angular)
-
-- Sign-up, sign-in and sign-out with server-side revocation, session-expiry warning, and
-  return to the requested page after signing in again
-- Every screen scoped to an organization in the URL; membership checked by the API;
-  navigation and actions shown according to the user's role
-- Dashboard built only from real API data, including 7-day workflow and retry history
-  read from the audit log
-- Employees (search, filters in the URL, add / edit with concurrent-edit protection,
-  terminate, archive), departments, reporting lines
-- Connectors (forms generated from each connector type's schema, connection test,
-  manual operations, reconcile, disconnect), workflows (step builder, activate /
-  deactivate, execution history), event monitor with per-attempt detail
-- Reliability overview, dead-letter queue with replay, data conflicts with
-  policy-aware resolution, source-of-truth policies, audit log, team and roles, settings
-- Dark and light themes, collapsible sidebar, phone layouts, WCAG AA colour contrast
-- 57 unit tests and a 13-test browser suite (Playwright) that runs against the real
-  stack, including automated accessibility checks
-
-### Backend
-
-- FastAPI backend with structured JSON logs, request IDs and one consistent error format
-- `/health` (liveness) and `/ready` (database readiness) probes
-- PostgreSQL 16 in Docker Compose, schema managed by Alembic migrations
-- Registration, login with JWT access tokens, `/me`, and logout that truly revokes the token
-- Organizations API with four roles (Super Admin, Organization Admin, Integration Manager,
-  Viewer), permission checks, and strict organization isolation (outsiders get 404)
-- Member management with a concurrency-safe "at least one admin" rule
-- Departments and employees API: create, search, filter, sort, paginate, update, terminate
-  (direct reports move up) and archive, with tenant integrity enforced by the database
-- Employee lifecycle events (`employee.created`, `.updated`, `.department_changed`,
-  `.manager_changed`, `.terminated`) detected on every change and logged without personal data
-- Reporting-line cycle prevention that is safe under concurrent requests
-- `seed-demo` command that creates a realistic demo organization
-- Connector framework: one interface, three adapters (Slack SCIM, Google Workspace
-  Directory with OAuth token lifecycle, payroll API key) with credentials encrypted at
-  rest, connection tests, normalized and classified errors (429 `Retry-After`, timeouts,
-  5xx), SSRF protection, and manual provisioning operations
-- Local mock Slack, Google Workspace and payroll services with on-demand failure injection
-  (**simulated** - see [mock-services/README.md](mock-services/README.md))
-- **Automatic provisioning**: configurable workflows (trigger + ordered connector steps)
-  run by Celery workers when employees are hired, changed or terminated - e.g. hire someone
-  and their Slack, Google and payroll accounts are created about a second later
-- **Transactional outbox**: an employee change and its events commit together; an outbox
-  relay publishes them to Redis and re-sends events whose worker crashed
-- At-least-once delivery with idempotent processing: duplicate deliveries are skipped, a
-  crashed worker's event is resumed without repeating finished steps, and a late event
-  never creates accounts for someone already terminated
-- Events and workflow execution history with per-step status through the API, traceable in
-  the logs by the originating request ID
-- **Reliability engine**: failures are classified; temporary ones (5xx, timeouts, 429) are
-  retried with exponential backoff and jitter, honouring `Retry-After`, with a bounded
-  number of attempts and every external call recorded in an attempt history
-- **Dead-letter queue**: work that fails for good is parked with its error preserved and
-  can be replayed (by Integration Managers and Admins) - only the failed steps run again
-- **Idempotency keys** in both directions: retried external creates do not create a
-  second account (with APIs that honour the key, as the mocks do), and a client resending
-  `POST /employees` with the same `Idempotency-Key` gets the first response back
-- **Circuit breaker** per connector shared by all workers, optional per-connector **rate
-  limits**, and a time limit per operation
-- **Audit log**: every important change - employees, permissions, connectors, workflows,
-  replays, synchronization outcomes, conflict decisions - is recorded with who did it and
-  the request ID, in the same transaction as the change; append-only, enforced by the
-  database; no secrets or personal values
-- **Optimistic concurrency**: employees carry a version (`ETag`); a save from an outdated
-  screen (`If-Match`) is refused with 412 instead of overwriting someone else's change
-- **Data conflicts**: per-field source-of-truth policies (HR or a specific application,
-  severity, manual or automatic fixing); reconciliation compares each application with
-  SyncForge and records differences instead of overwriting them; conflicts are resolved
-  explicitly, with override, staleness and permission checks, and a full history
-- 527 automated tests against a real PostgreSQL database, including two-session
-  concurrency tests, connector tests over real HTTP against the mocks, a real Celery
-  worker, and failure simulations (outages, 429, timeouts, crashes, duplicates)
-
-## Tech stack
-
-| Layer | Technology | Status |
-|---|---|---|
-| Backend | Python 3.13, FastAPI, Pydantic v2, SQLAlchemy 2, Alembic | in use |
-| Database | PostgreSQL 16 (Docker) | in use |
-| Auth | Argon2id password hashing, JWT (PyJWT) | in use |
-| Integrations | httpx2 (HTTP client), cryptography (Fernet credential encryption) | in use |
-| Testing | Pytest, Starlette TestClient | in use |
-| Background jobs | Redis 7 (broker), Celery 5.7 (workers) | in use |
-| Frontend | Angular 22, TypeScript, Angular CDK, ECharts 6 | in use |
-| Frontend testing | Vitest, Playwright, axe-core | in use |
-| CI | GitHub Actions | Phase 10 |
-
-## Quick start (Windows PowerShell)
-
-Prerequisites: Python 3.13 (`py -3.13`), Docker Desktop, Git.
-Full installation guide for each tool: see the Phase 1 notes in [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
-
-```powershell
-# 1. Configuration (from the repository root)
-Copy-Item .env.example .env
-$secret = py -3.13 -c "import secrets; print(secrets.token_urlsafe(64))"
-(Get-Content .env) -replace '^JWT_SECRET_KEY=.*', "JWT_SECRET_KEY=$secret" | Set-Content .env -Encoding ascii
-
-# 2. Start PostgreSQL and Redis
-docker compose up -d postgres redis
-
-# 3. Backend environment
-cd backend
-py -3.13 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements-dev.txt
-
-# 4. Create the database schema
-alembic upgrade head
-
-# 5. Run the API
-uvicorn app.main:app --reload
-```
-
-Open **http://127.0.0.1:8000/docs** for the interactive API documentation.
-
-Connectors need an encryption key for their credentials. Generate one and put it in `.env`:
-
-```powershell
-$key = python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-(Get-Content ..\.env) -replace '^CONNECTOR_ENCRYPTION_KEY=.*', "CONNECTOR_ENCRYPTION_KEY=$key" | Set-Content ..\.env -Encoding ascii
-```
-
-### Run the whole system (automatic provisioning)
-
-Besides the API, run the mock services, a worker and the outbox relay, each in its own
-terminal. The commands use absolute folders and the project's own `python.exe`, so they work
-from any terminal and never pick up another project's tools from `PATH`:
-
-```powershell
-# mock Slack / Google Workspace / payroll (simulated)
-Set-Location "$HOME\Projects\syncforge\mock-services"
-& "$HOME\Projects\syncforge\backend\.venv\Scripts\python.exe" -m mockservices.run_all
-
-# worker (Windows needs --pool=solo)
-Set-Location "$HOME\Projects\syncforge\backend"
-& "$HOME\Projects\syncforge\backend\.venv\Scripts\python.exe" -m celery -A app.workers.celery_app worker --loglevel=INFO --pool=solo
-
-# outbox relay
-Set-Location "$HOME\Projects\syncforge\backend"
-& "$HOME\Projects\syncforge\backend\.venv\Scripts\python.exe" -m app.cli outbox-relay
-```
-
-(Adjust `$HOME\Projects\syncforge` if you cloned elsewhere.) Then create connectors and an
-active workflow through the API ([docs/08](docs/08-api-design.md), sections 7-8) and add an
-employee: the event appears under `GET .../events` and is processed within about a second.
-How it works: [docs/09](docs/09-event-driven-architecture.md),
-[docs/11](docs/11-workflow-engine.md).
-
-With these four processes and Redis running, the demo injects failures into the mocks and
-shows retries, idempotency, the dead-letter queue and replay, the circuit breaker, a rate
-limit, a data conflict resolved by policy, a refused stale edit and the audit trail (about
-three minutes; [docs/12, section 10](docs/12-reliability-and-retries.md#10-seeing-it-work),
-[docs/14, section 9](docs/14-data-integrity.md#9-seeing-it-work)):
-
-```powershell
-Set-Location "$HOME\Projects\syncforge"
-& "$HOME\Projects\syncforge\backend\.venv\Scripts\python.exe" infrastructure\scripts\demo_reliability.py
-```
-
-### Run the web application
-
-Prerequisites: Node.js 22 LTS and npm. With the API running (and, for provisioning, the
-mocks, worker and relay above), in another terminal:
+## Run (Windows PowerShell)
 
 ```powershell
 Set-Location "$HOME\Projects\syncforge\frontend"
@@ -195,105 +19,72 @@ npm ci
 npm start
 ```
 
-Open **http://localhost:4200**, create an account, then an organization. The dev server
-forwards `/api` to the API on port 8000. Frontend commands and the browser test suite:
-[frontend/README.md](frontend/README.md).
+Open http://localhost:4200. The development server forwards `/api`, `/health` and
+`/ready` to the API (`proxy.conf.json`), so the browser only ever talks to one origin.
 
-Optional - load demo data. Register a user first (for example through `/docs`), then:
-
-```powershell
-python -m app.cli seed-demo --admin-email you@example.com
-```
-
-This creates the "Acme Demo" organization with 5 departments and 20 fictional employees, and
-makes you its Organization Admin.
-
-Maintenance - delete expired revoked tokens and idempotency records (schedule it daily):
+## Checks
 
 ```powershell
-python -m app.cli purge-expired
+npx ng build              # production build with size budgets
+npm run test:ci           # unit tests (Vitest)
+npx ng lint               # ESLint + angular-eslint, including template accessibility rules
+npm run format:check      # Prettier
+npm run api:check         # API types still match openapi/openapi.json
 ```
 
-Optional - create a platform Super Admin (prompts for a password):
+## Browser tests (Playwright)
+
+The suite in `e2e/` drives the real application in Chromium against the real
+API, worker, outbox relay and mock services. It creates its own users and
+organizations through the API, so it never touches your existing data.
+
+One-time setup:
 
 ```powershell
-python -m app.cli create-superadmin --email admin@example.com --name "Platform Admin"
+npx playwright install chromium
 ```
 
-On macOS/Linux use `cp .env.example .env`, `python3.13 -m venv .venv` and
-`source .venv/bin/activate`.
-
-## Running tests and checks
-
-From `backend/` with the virtual environment active and PostgreSQL running:
+Start all five processes first (Postgres and Redis in Docker, the mock
+services, the API, the worker, the relay) and `npm start`, then:
 
 ```powershell
-ruff check .            # lint
-ruff format --check .   # formatting
-python -m pytest -v     # tests (uses a separate syncforge_test database)
+npm run e2e          # 13 tests, about 3 minutes
+npm run e2e:report   # open the HTML report of the last run
 ```
 
-From `frontend/`:
+Environment variables, all optional: `SF_WEB` (default `http://localhost:4200`),
+`SF_API` (default `http://127.0.0.1:8000/api/v1`), `SF_CHROME` (path to a
+Chrome binary to use instead of Playwright's Chromium).
+
+What is covered: sign-up and sign-in, organization isolation, employee
+lifecycle with a concurrent edit, connecting and testing connectors, building
+and activating a workflow, a hire provisioned end to end, a dead letter
+replayed to completion, a conflict reconciled and resolved, viewer RBAC,
+automated accessibility checks (axe, WCAG 2 A/AA) on 14 pages in both themes,
+and a 390 px phone layout check on the same pages.
+
+## API types
+
+`src/app/core/api/schema.d.ts` is generated from the backend's OpenAPI document and must not
+be edited by hand. After a backend API change, refresh the snapshot and regenerate:
 
 ```powershell
-npm run test:ci         # unit tests
-npx ng lint             # lint, including template accessibility rules
-npm run format:check    # formatting
-npx ng build            # production build with size budgets
-npm run e2e             # browser tests (needs the whole stack running)
+Set-Location "$HOME\Projects\syncforge\backend"
+& "$HOME\Projects\syncforge\backend\.venv\Scripts\python.exe" -c "import json; from app.main import app; open('../frontend/openapi/openapi.json', 'w', encoding='utf-8', newline='\n').write(json.dumps(app.openapi(), indent=2, sort_keys=True) + '\n')"
+Set-Location "$HOME\Projects\syncforge\frontend"
+npm run api:types
 ```
 
-## Repository layout
+`openapi-typescript` runs through `npx` (it is not installed as a dependency: its peer range
+does not yet include TypeScript 6).
+
+## Structure
 
 ```
-backend/
-  app/
-    api/            HTTP routers (/health, /ready, /api/v1/...)
-    core/           settings, logging, middleware, errors, database engine
-    models/         SQLAlchemy tables
-    repositories/   database queries
-    schemas/        request/response contracts
-    security/       password hashing, JWT, roles and permissions
-    services/       business rules and transactions
-    connectors/     connector interface, registry, HTTP client, Slack/Google/payroll adapters
-    events/         lifecycle detection, transactional outbox, outbox relay
-    workflows/      workflow engine (claim, plan, run steps, record outcomes)
-    reliability/    retry policy, dead letter, circuit breaker, rate limit, idempotency
-    integrity/      field comparison rules and default source-of-truth policies
-    audit.py        audit log recorder
-    workers/        Celery app and tasks
-    cli.py          operator commands (create-superadmin, seed-demo, outbox-relay, purge-expired)
-    seed.py         demo data
-  migrations/       Alembic migrations (0001-0012)
-  tests/            pytest suite
-docs/               architecture, database, API, security, ADRs
-frontend/           Angular application (src/app: core, layout, shared, features; e2e/ browser tests)
-mock-services/      mock Slack / Google Workspace / payroll APIs (simulated, failure injection)
-infrastructure/     scripts (scripts/demo_reliability.py); Dockerfiles in Phase 10
-docker-compose.yml  local PostgreSQL and Redis (more services added per phase)
+src/app/
+  core/       API client and types, session and guards, organization context, theme, toasts
+  shared/     design system components, chart wrapper, form helpers
+  layout/     application shell (sidebar, top bar, organization switcher)
+  features/   one folder per area (auth, dashboard, ...), lazy-loaded
+src/styles/   design tokens (dark and light themes) and shared control styles
 ```
-
-## Documentation
-
-| Document | Contents |
-|---|---|
-| [System architecture](docs/05-system-architecture.md) | Components, layers, request lifecycle, errors, logging |
-| [Component design](docs/06-component-design.md) | Employee domain model, lifecycle, validation layers, events, concurrency |
-| [Database design](docs/07-database-design.md) | ER diagram, tables, constraints, migrations, transactions |
-| [API design](docs/08-api-design.md) | Conventions, error codes, endpoint reference |
-| [Event-driven architecture](docs/09-event-driven-architecture.md) | Transactional outbox, relay, Redis, Celery workers, leases, delivery guarantees |
-| [Connector framework](docs/10-connector-framework.md) | Interface, adapters, real vs simulated, error normalization, OAuth lifecycle, credential security, adding a connector |
-| [Workflow engine](docs/11-workflow-engine.md) | Workflows, executions, job states, processing sequence, failure boundaries |
-| [Reliability and retries](docs/12-reliability-and-retries.md) | Failure classification, backoff and jitter, attempt history, dead-letter queue and replay, circuit breaker, rate limits, timeouts, demo |
-| [Idempotency](docs/13-idempotency.md) | Where duplicates could come from and what stops each; idempotency keys outgoing and incoming |
-| [Data integrity](docs/14-data-integrity.md) | Audit log, optimistic concurrency (ETag / If-Match), source-of-truth policies, reconciliation, conflict resolution |
-| [Security design](docs/15-security-design.md) | Auth flow, JWT lifecycle, passwords, secrets, roles, tenant isolation, connector credentials, SSRF |
-| [Troubleshooting](docs/21-troubleshooting.md) | Investigating failed requests and synchronizations, connector, worker, test and Windows issues |
-| [Frontend plan](docs/PHASE_8_FRONTEND_PLAN.md) | Screen-to-endpoint map, permission matrix, features the API does not support |
-| [Frontend architecture](docs/PHASE_8_FRONTEND_ARCHITECTURE.md) | Layers, routing, session, authorization, state, errors, design system |
-| [Frontend components](docs/PHASE_8_FRONTEND_COMPONENTS.md) | Shared components and every page with the API calls behind it |
-| [Frontend API integration](docs/PHASE_8_FRONTEND_API_INTEGRATION.md) | Generated types, endpoint map, headers, paging, errors, polling |
-| [Frontend testing](docs/PHASE_8_FRONTEND_TESTING.md) | Test layers, browser suite, accessibility findings and results |
-| [Phase 8 report](docs/PHASE_8_FRONTEND_REPORT.md) | What was delivered, verification, limitations |
-| [Architecture decisions](docs/adr/) | ADR-0001 to ADR-0020 |
-| [Project plan](PROJECT_PLAN.md), [Status](PROJECT_STATUS.md), [Changelog](CHANGELOG.md) | Progress tracking |
