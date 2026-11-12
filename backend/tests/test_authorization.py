@@ -45,6 +45,15 @@ ADMIN, MANAGER, VIEWER = (
         (MANAGER, Permission.CONNECTORS_READ, True),
         (MANAGER, Permission.CONNECTORS_MANAGE, True),
         (ADMIN, Permission.CONNECTORS_MANAGE, True),
+        # Phase 5: everyone sees workflows and events; integration managers and admins
+        # configure workflows.
+        (VIEWER, Permission.WORKFLOWS_READ, True),
+        (VIEWER, Permission.EVENTS_READ, True),
+        (VIEWER, Permission.WORKFLOWS_MANAGE, False),
+        (MANAGER, Permission.WORKFLOWS_MANAGE, True),
+        (MANAGER, Permission.EVENTS_READ, True),
+        (MANAGER, Permission.EMPLOYEES_WRITE, False),
+        (ADMIN, Permission.WORKFLOWS_MANAGE, True),
     ],
 )
 def test_role_permission_matrix(
