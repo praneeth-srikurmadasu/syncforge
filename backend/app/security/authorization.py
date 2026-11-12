@@ -35,6 +35,8 @@ class Permission(enum.StrEnum):
     EMPLOYEES_WRITE = "employees:write"
     DEPARTMENTS_READ = "departments:read"
     DEPARTMENTS_MANAGE = "departments:manage"
+    CONNECTORS_READ = "connectors:read"
+    CONNECTORS_MANAGE = "connectors:manage"
 
 
 _VIEWER = frozenset(
@@ -43,13 +45,15 @@ _VIEWER = frozenset(
         Permission.MEMBERS_READ,
         Permission.EMPLOYEES_READ,
         Permission.DEPARTMENTS_READ,
+        Permission.CONNECTORS_READ,
     }
 )
 
 ROLE_PERMISSIONS: dict[OrganizationRole, frozenset[Permission]] = {
     OrganizationRole.VIEWER: _VIEWER,
-    # Integration managers gain connector/workflow permissions in Phases 4-5.
-    OrganizationRole.INTEGRATION_MANAGER: _VIEWER,
+    # Integration managers configure and operate integrations (workflows in Phase 5),
+    # but do not manage people, departments or the organization itself.
+    OrganizationRole.INTEGRATION_MANAGER: _VIEWER | {Permission.CONNECTORS_MANAGE},
     OrganizationRole.ORG_ADMIN: frozenset(Permission),
 }
 

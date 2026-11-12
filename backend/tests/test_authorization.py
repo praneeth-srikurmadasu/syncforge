@@ -39,6 +39,12 @@ ADMIN, MANAGER, VIEWER = (
         (MANAGER, Permission.DEPARTMENTS_MANAGE, False),
         (ADMIN, Permission.EMPLOYEES_WRITE, True),
         (ADMIN, Permission.DEPARTMENTS_MANAGE, True),
+        # Phase 4: everyone sees connectors; integration managers and admins manage them.
+        (VIEWER, Permission.CONNECTORS_READ, True),
+        (VIEWER, Permission.CONNECTORS_MANAGE, False),
+        (MANAGER, Permission.CONNECTORS_READ, True),
+        (MANAGER, Permission.CONNECTORS_MANAGE, True),
+        (ADMIN, Permission.CONNECTORS_MANAGE, True),
     ],
 )
 def test_role_permission_matrix(

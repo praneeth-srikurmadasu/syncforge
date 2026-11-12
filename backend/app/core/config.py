@@ -57,10 +57,12 @@ class Settings(BaseSettings):
     connector_allowed_hosts: list[str] = ["localhost", "127.0.0.1"]
     connector_connect_timeout_seconds: float = Field(default=3.0, gt=0, le=60)
     connector_read_timeout_seconds: float = Field(default=10.0, gt=0, le=120)
-    # Default endpoints: the local mock services in mock-services/.
-    slack_base_url: str = "http://localhost:9101"
-    google_workspace_base_url: str = "http://localhost:9102"
-    payroll_base_url: str = "http://localhost:9103"
+    # Default endpoints: the local mock services in mock-services/. 127.0.0.1 rather
+    # than "localhost": on Windows, localhost tries IPv6 (::1) first, and a refused
+    # loopback connection is retried for ~2s before falling back to IPv4.
+    slack_base_url: str = "http://127.0.0.1:9101"
+    google_workspace_base_url: str = "http://127.0.0.1:9102"
+    payroll_base_url: str = "http://127.0.0.1:9103"
 
     @field_validator("connector_encryption_key", mode="before")
     @classmethod
