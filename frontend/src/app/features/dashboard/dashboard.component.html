@@ -69,6 +69,7 @@
         [error]="failed(o?.conflictsOpen)"
         [tone]="(value(o?.conflictsOpen) ?? 0) > 0 ? 'warning' : 'neutral'"
         hint="Records that disagree between systems"
+        [link]="['/o', org.orgId(), 'conflicts']"
       />
     </section>
   }

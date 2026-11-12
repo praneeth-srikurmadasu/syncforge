@@ -169,7 +169,11 @@ type Kind = 'accounts' | 'dead-letters' | 'conflicts' | 'history';
                 @for (c of page.items; track c.id) {
                   <tr>
                     <td><sf-employee-name [id]="c.employee_id" /></td>
-                    <td>{{ humanize(c.field) }}</td>
+                    <td>
+                      <a [routerLink]="['/o', orgId(), 'conflicts', c.id]">{{
+                        humanize(c.field)
+                      }}</a>
+                    </td>
                     <td>{{ c.syncforge_value ?? '-' }}</td>
                     <td>{{ c.external_value ?? '-' }}</td>
                     <td><sf-status [value]="c.severity" /></td>

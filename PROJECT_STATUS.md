@@ -1,6 +1,6 @@
 # SyncForge - Project Status
 
-**Current phase:** 8 in progress - Angular frontend. Milestones 1-7 delivered (1-6 verified on Windows, commit `88a1234`); 8-10 next.
+**Current phase:** 8 in progress - Angular frontend. Milestones 1-8 delivered (1-7 verified on Windows, commit `95a96a8`); 9-10 next.
 **Last updated:** 2026-11-12
 
 | Phase | Status |
@@ -12,7 +12,7 @@
 | 5 - Workflow engine and event processing | Complete |
 | 6 - Reliability engine and failure recovery | Complete |
 | 7 - Data integrity, conflicts, audit logging | Complete |
-| 8 - Angular frontend | In progress (milestones 1-7 of 10 delivered) |
+| 8 - Angular frontend | In progress (milestones 1-8 of 10 delivered) |
 | 9-10 | Not started |
 
 ## Phase 8 progress
@@ -30,7 +30,8 @@ Plan, screen-to-endpoint map and unsupported features: `docs/PHASE_8_FRONTEND_PL
 | 6 | Integrations and events: connector catalog and list; create / edit settings / replace credentials from each type's JSON schema (no per-connector UI code); connection test with the normalized error; manual operation for one employee; reconcile summary; disconnect with typed confirmation; linked accounts, dead letters, conflicts and history per connector; event monitor (status, type, employee filters, optional 5 s refresh) and event page (timeline, workflow executions with per-step results, every attempt with HTTP status, error, duration and retry time; refreshes itself until the event settles) | Done |
 | 7 | Workflows and reliability: workflow list (trigger / state filters), step builder (trigger, ordered connector + operation steps, reorder, suggested operation per trigger, duplicate and disconnected-connector warnings, 20-step limit), workflow page (step chain, activate / deactivate, execution history with per-step results); reliability overview (retrying events, open dead letters, circuits not closed, audit-log counts for retries / dead letters / circuit openings / replays, connector protection table, recent retries); dead-letter queue (status and connector filters) and entry page (reason, failed step, error, event, other entries for the event, replay with confirmation) | Done |
 | 7a | Owner request: collapsible sidebar (icons-only rail on screens wider than 900 px, state kept in the browser; drawer on small screens unchanged) | Done |
-| 8-10 | Data integrity and governance, QA, documentation | Next |
+| 8 | Data integrity and governance: conflicts list (status, severity, field, application filters) and conflict page (side-by-side values with the authoritative side marked, decide: keep SyncForge's value / use the application's / dismiss, override and note enforced as the API requires, employees:write hint, stale-conflict link to reconcile, history); source-of-truth policies (per field: authoritative system, severity, manual / automatic); audit log (action group, resource, actor, outcome, time range, expandable details, links to the resource); team and roles (add registered users, change roles, remove, own-role and last-admin handling); settings (rename organization, account, memberships, session end, theme, sign out) | Done |
+| 9-10 | QA, documentation | Next |
 
 ### Phase 8 verification so far (actual results)
 
@@ -77,6 +78,21 @@ Plan, screen-to-endpoint map and unsupported features: `docs/PHASE_8_FRONTEND_PL
   payroll mock answering 503 to every create, a new hire's event reached `dead_letter`
   after 34 s (5 attempts); the fault was cleared, the entry replayed from its page, the
   event then completed; the reliability overview showed the counts from the audit log.
+
+- Windows, milestones 7 and 7a (commits `cd54e12`, `95a96a8`): build, **53 passed**, lint and
+  format clean; the owner ran the failure demo (payroll 503 -> dead letter after 5 attempts
+  -> replay -> completed) and checked the collapsible sidebar.
+- Milestone 8, Linux workspace: build success; `npm run test:ci` **57 passed** (16 files);
+  lint and format clean. Headless Chrome against the running stack: a department changed in
+  the payroll mock was found by Reconcile (1 conflict); choosing payroll's value against
+  the policy kept Resolve disabled until override and a note were given; keeping
+  SyncForge's value resolved it and the payroll mock showed Engineering again; a policy
+  changed to payroll / automatic and back; the audit log filtered to conflict entries with
+  details; an unregistered email was refused with the explanation; a registered user added
+  as viewer, then signed in as that viewer: no Audit log in the navigation, `/audit`
+  redirected to the forbidden page, no Add employee button, no decision panel on conflicts;
+  role changed to integration manager and the member removed; organization renamed and
+  renamed back, the sidebar updated.
 
 #### Milestones 1-4, Linux workspace (Node 22.23.4)
 

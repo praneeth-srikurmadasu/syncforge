@@ -7,6 +7,7 @@ import {
   input,
   linkedSignal,
 } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { AuditEntry, Conflict, IntegrationEvent, Page } from '../../core/api/models';
 import { AuditApi, ConflictsApi, EventsApi } from '../../core/api/operations.api';
 import { OrgContextService } from '../../core/org/org-context.service';
@@ -27,6 +28,7 @@ const LIMIT = 10;
 @Component({
   selector: 'sf-employee-activity',
   imports: [
+    RouterLink,
     StatusBadgeComponent,
     JsonViewComponent,
     PaginationComponent,
@@ -103,7 +105,11 @@ const LIMIT = 10;
               <tbody>
                 @for (c of page.items; track c.id) {
                   <tr>
-                    <td class="sf-cell-primary">{{ humanize(c.field) }}</td>
+                    <td class="sf-cell-primary">
+                      <a [routerLink]="['/o', orgId(), 'conflicts', c.id]">{{
+                        humanize(c.field)
+                      }}</a>
+                    </td>
                     <td>{{ c.syncforge_value ?? '-' }}</td>
                     <td>{{ c.external_value ?? '-' }}</td>
                     <td><sf-status [value]="c.severity" /></td>
@@ -204,6 +210,7 @@ export class EmployeeActivityComponent {
   readonly kind = input.required<'events' | 'conflicts' | 'history'>();
 
   private readonly org = inject(OrgContextService);
+  protected readonly orgId = this.org.orgId;
   private readonly eventsApi = inject(EventsApi);
   private readonly conflictsApi = inject(ConflictsApi);
   private readonly auditApi = inject(AuditApi);

@@ -57,4 +57,13 @@ export const NAV: NavGroup[] = [
       },
     ],
   },
+  {
+    label: 'Governance',
+    items: [
+      { label: 'Conflicts', path: 'conflicts', icon: 'compare', permission: 'conflicts:read' },
+      { label: 'Audit log', path: 'audit', icon: 'file-clock', permission: 'audit:read' },
+      { label: 'Team and roles', path: 'team', icon: 'users', permission: 'members:read' },
+      { label: 'Settings', path: 'settings', icon: 'settings', permission: 'org:read' },
+    ],
+  },
 ];

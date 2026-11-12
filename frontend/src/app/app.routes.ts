@@ -205,6 +205,57 @@ export const routes: Routes = [
           ),
       },
       {
+        path: 'conflicts',
+        title: 'Conflicts · SyncForge',
+        canActivate: [permissionGuard],
+        data: { permission: 'conflicts:read' },
+        loadComponent: () =>
+          import('./features/conflicts/conflicts-list.component').then(
+            (m) => m.ConflictsListComponent,
+          ),
+      },
+      {
+        path: 'conflicts/:id',
+        title: 'Conflict · SyncForge',
+        canActivate: [permissionGuard],
+        data: { permission: 'conflicts:read' },
+        loadComponent: () =>
+          import('./features/conflicts/conflict-detail.component').then(
+            (m) => m.ConflictDetailComponent,
+          ),
+      },
+      {
+        path: 'policies',
+        title: 'Policies · SyncForge',
+        canActivate: [permissionGuard],
+        data: { permission: 'conflicts:read' },
+        loadComponent: () =>
+          import('./features/conflicts/policies.component').then((m) => m.PoliciesComponent),
+      },
+      {
+        path: 'audit',
+        title: 'Audit log · SyncForge',
+        canActivate: [permissionGuard],
+        data: { permission: 'audit:read' },
+        loadComponent: () =>
+          import('./features/audit/audit-log.component').then((m) => m.AuditLogComponent),
+      },
+      {
+        path: 'team',
+        title: 'Team and roles · SyncForge',
+        canActivate: [permissionGuard],
+        data: { permission: 'members:read' },
+        loadComponent: () => import('./features/team/team.component').then((m) => m.TeamComponent),
+      },
+      {
+        path: 'settings',
+        title: 'Settings · SyncForge',
+        canActivate: [permissionGuard],
+        data: { permission: 'org:read' },
+        loadComponent: () =>
+          import('./features/settings/settings.component').then((m) => m.SettingsComponent),
+      },
+      {
         path: 'forbidden',
         title: 'Not permitted · SyncForge',
         loadComponent: () =>

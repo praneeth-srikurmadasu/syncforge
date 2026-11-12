@@ -1,0 +1,182 @@
+<div class="sf-page">
+  <sf-page-header
+    title="Audit log"
+    description="Every change and every automatic action, written in the same transaction as the change itself. Entries cannot be edited or deleted through the application."
+  />
+
+  <div class="sf-card">
+    <div class="sf-filters">
+      <div class="sf-field">
+        <label for="al-action">Action</label>
+        <select id="al-action" class="sf-select" (change)="q.set({ action: value($event) })">
+          <option value="">Any action</option>
+          @for (a of actionGroups; track a.value) {
+            <option [value]="a.value" [selected]="q.get('action') === a.value">
+              {{ a.label }}
+            </option>
+          }
+        </select>
+      </div>
+      <div class="sf-field">
+        <label for="al-resource">Resource</label>
+        <select id="al-resource" class="sf-select" (change)="q.set({ resource: value($event) })">
+          <option value="">Any resource</option>
+          @for (r of resourceTypes; track r) {
+            <option [value]="r" [selected]="q.get('resource') === r">{{ humanize(r) }}</option>
+          }
+        </select>
+      </div>
+      <div class="sf-field">
+        <label for="al-actor">Actor</label>
+        <select id="al-actor" class="sf-select" (change)="q.set({ actor: value($event) })">
+          <option value="">Anyone</option>
+          @for (m of members.value()?.items ?? []; track m.user_id) {
+            <option [value]="m.user_id" [selected]="q.get('actor') === m.user_id">
+              {{ m.full_name }}
+            </option>
+          }
+        </select>
+      </div>
+      <div class="sf-field narrow">
+        <label for="al-outcome">Outcome</label>
+        <select id="al-outcome" class="sf-select" (change)="q.set({ outcome: value($event) })">
+          <option value="">Any</option>
+          <option value="success" [selected]="q.get('outcome') === 'success'">Success</option>
+          <option value="failure" [selected]="q.get('outcome') === 'failure'">Failure</option>
+        </select>
+      </div>
+      <div class="sf-field">
+        <label for="al-since">From</label>
+        <input
+          id="al-since"
+          class="sf-input"
+          type="datetime-local"
+          [value]="q.get('since')"
+          (change)="q.set({ since: value($event) })"
+        />
+      </div>
+      <div class="sf-field">
+        <label for="al-until">Until</label>
+        <input
+          id="al-until"
+          class="sf-input"
+          type="datetime-local"
+          [value]="q.get('until')"
+          (change)="q.set({ until: value($event) })"
+        />
+      </div>
+      @if (hasFilters()) {
+        <button type="button" class="sf-btn sf-btn--ghost" (click)="q.clear()">
+          Clear filters
+        </button>
+      }
+    </div>
+
+    @if (entries.error(); as err) {
+      <sf-error-state [error]="err" (retry)="entries.reload()" />
+    } @else if (entries.hasValue()) {
+      @let page = entries.value();
+      @if (page.items.length === 0) {
+        <sf-empty-state icon="file-clock" title="No entries match" />
+      } @else {
+        <div class="sf-table-wrap">
+          <table class="sf-table">
+            <thead>
+              <tr>
+                <th scope="col">When</th>
+                <th scope="col">Action</th>
+                <th scope="col">Actor</th>
+                <th scope="col">Resource</th>
+                <th scope="col">Outcome</th>
+                <th scope="col"><span class="sf-visually-hidden">Details</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (e of page.items; track e.id) {
+                <tr class="sf-row-link" [class.open]="selected()?.id === e.id" (click)="toggle(e)">
+                  <td class="when">
+                    <span [attr.title]="formatDateTime(e.created_at)"
+                      ><sf-time [value]="e.created_at"
+                    /></span>
+                  </td>
+                  <td>
+                    <code class="action">{{ e.action }}</code>
+                  </td>
+                  <td>{{ actor(e) }}</td>
+                  <td>
+                    {{ humanize(e.resource_type) }}
+                    @if (link(e); as l) {
+                      <a [routerLink]="l" (click)="$event.stopPropagation()" class="res">open</a>
+                    }
+                  </td>
+                  <td><sf-status [value]="e.outcome" /></td>
+                  <td class="chev">
+                    <button
+                      type="button"
+                      class="sf-btn sf-btn--ghost sf-btn--icon"
+                      [attr.aria-expanded]="selected()?.id === e.id"
+                      [attr.aria-label]="'Details of ' + e.action"
+                      (click)="$event.stopPropagation(); toggle(e)"
+                    >
+                      <sf-icon
+                        [name]="selected()?.id === e.id ? 'chevron-down' : 'chevron-right'"
+                        [size]="14"
+                      />
+                    </button>
+                  </td>
+                </tr>
+                @if (selected()?.id === e.id) {
+                  <tr class="detail">
+                    <td colspan="6">
+                      <div class="detail-grid">
+                        <dl class="sf-dl">
+                          <dt>Time</dt>
+                          <dd>{{ formatDateTime(e.created_at) }}</dd>
+                          <dt>Resource ID</dt>
+                          <dd>
+                            @if (e.resource_id) {
+                              <sf-id [value]="e.resource_id" [short]="false" />
+                            } @else {
+                              -
+                            }
+                          </dd>
+                          <dt>Request ID</dt>
+                          <dd>
+                            @if (e.request_id) {
+                              <sf-id [value]="e.request_id" [short]="false" />
+                            } @else {
+                              -
+                            }
+                          </dd>
+                          <dt>Entry</dt>
+                          <dd>
+                            <code>#{{ e.id }}</code>
+                          </dd>
+                        </dl>
+                        <div>
+                          <span class="sf-muted small"
+                            >Details as recorded by the backend: IDs, field names and non-personal
+                            values, never secrets</span
+                          >
+                          <sf-json [value]="e.details" />
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                }
+              }
+            </tbody>
+          </table>
+        </div>
+        <sf-pagination
+          [total]="page.total"
+          [limit]="page.limit"
+          [offset]="page.offset"
+          (offsetChange)="q.set({ offset: $event || null }, false)"
+        />
+      }
+    } @else {
+      <sf-skeleton [rows]="8" />
+    }
+  </div>
+</div>
