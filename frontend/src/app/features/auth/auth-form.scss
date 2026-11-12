@@ -1,0 +1,42 @@
+:host {
+  display: block;
+  width: 100%;
+  max-width: 380px;
+}
+
+h1 {
+  font-size: var(--sf-text-2xl);
+}
+
+.lede {
+  margin: 6px 0 var(--sf-space-5);
+  color: var(--sf-text-muted);
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sf-space-4);
+}
+
+.submit {
+  height: 38px;
+  margin-top: var(--sf-space-1);
+}
+
+.alt {
+  margin-top: var(--sf-space-5);
+  font-size: var(--sf-text-sm);
+  color: var(--sf-text-muted);
+}
+
+.sf-alert {
+  margin-bottom: var(--sf-space-4);
+}
+
+.rid {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--sf-text-xs);
+  color: var(--sf-text-faint);
+}

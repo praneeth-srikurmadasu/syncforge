@@ -1,0 +1,127 @@
+<a class="skip" href="#sf-main">Skip to content</a>
+<div class="frame" [class.nav-open]="navOpen()">
+  <aside class="sidebar" aria-label="Main navigation">
+    <div class="brand">
+      <sf-brand-mark />
+      <span>SyncForge</span>
+    </div>
+
+    <button
+      type="button"
+      class="org-switch"
+      [cdkMenuTriggerFor]="orgMenu"
+      aria-label="Switch organization"
+    >
+      <span class="org-avatar">{{ (org.organization()?.name ?? '?').charAt(0) }}</span>
+      <span class="org-text">
+        <span class="org-name">{{ org.organization()?.name }}</span>
+        <span class="org-role">{{ roleLabel() }}</span>
+      </span>
+      <sf-icon name="chevron-down" [size]="14" />
+    </button>
+
+    <ng-template #orgMenu>
+      <div class="menu" cdkMenu>
+        <div class="menu-label">Organizations</div>
+        <button type="button" class="menu-item current" cdkMenuItem disabled>
+          <sf-icon name="check" [size]="14" /> {{ org.organization()?.name }}
+        </button>
+        @for (m of otherMemberships(); track m.organization_id) {
+          <button
+            type="button"
+            class="menu-item"
+            cdkMenuItem
+            (cdkMenuItemTriggered)="switchTo(m.organization_id)"
+          >
+            <span class="menu-pad"></span> {{ m.organization_name }}
+          </button>
+        }
+        <div class="menu-sep"></div>
+        <a class="menu-item" cdkMenuItem routerLink="/organizations/new">
+          <sf-icon name="plus" [size]="14" /> Create organization
+        </a>
+      </div>
+    </ng-template>
+
+    <nav class="nav">
+      @for (group of nav(); track group.label) {
+        <div class="nav-group">
+          <span class="nav-label">{{ group.label }}</span>
+          @for (item of group.items; track item.path) {
+            <a
+              class="nav-item"
+              [routerLink]="['/o', org.orgId(), item.path]"
+              routerLinkActive="active"
+              [routerLinkActiveOptions]="{ exact: false }"
+              ariaCurrentWhenActive="page"
+            >
+              <sf-icon [name]="item.icon" />
+              {{ item.label }}
+            </a>
+          }
+        </div>
+      }
+    </nav>
+  </aside>
+  <button
+    type="button"
+    class="scrim"
+    aria-label="Close navigation"
+    tabindex="-1"
+    (click)="navOpen.set(false)"
+  ></button>
+
+  <div class="main-col">
+    <header class="topbar">
+      <button
+        type="button"
+        class="sf-btn sf-btn--ghost sf-btn--icon menu-btn"
+        aria-label="Open navigation"
+        (click)="navOpen.set(true)"
+      >
+        <sf-icon name="menu" />
+      </button>
+      <span class="sf-spacer"></span>
+      <button
+        type="button"
+        class="sf-btn sf-btn--ghost sf-btn--icon"
+        [attr.aria-label]="
+          theme.theme() === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'
+        "
+        (click)="theme.toggle()"
+      >
+        <sf-icon [name]="theme.theme() === 'dark' ? 'sun' : 'moon'" />
+      </button>
+      <button type="button" class="user" [cdkMenuTriggerFor]="userMenu" aria-label="Account menu">
+        <span class="avatar">{{ userInitials() }}</span>
+      </button>
+      <ng-template #userMenu>
+        <div class="menu menu--right" cdkMenu>
+          <div class="menu-user">
+            <strong>{{ session.user()?.full_name }}</strong>
+            <span class="sf-muted">{{ session.user()?.email }}</span>
+            @if (session.isSuperadmin()) {
+              <span class="sf-muted">Super admin</span>
+            }
+          </div>
+          <div class="menu-sep"></div>
+          <button type="button" class="menu-item" cdkMenuItem (cdkMenuItemTriggered)="signOut()">
+            <sf-icon name="log-out" [size]="14" /> Sign out
+          </button>
+        </div>
+      </ng-template>
+    </header>
+
+    @if (minutesLeft(); as minutes) {
+      <div class="session-warning" role="alert">
+        <sf-icon name="clock" [size]="14" />
+        Your session ends in {{ minutes }} minute{{ minutes === 1 ? '' : 's' }}. SyncForge sessions
+        last 30 minutes; sign in again afterwards to continue.
+      </div>
+    }
+
+    <main id="sf-main" tabindex="-1">
+      <router-outlet />
+    </main>
+  </div>
+</div>

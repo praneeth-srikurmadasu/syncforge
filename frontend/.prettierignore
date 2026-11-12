@@ -1,0 +1,4 @@
+src/app/core/api/schema.d.ts
+openapi/openapi.json
+dist
+.angular

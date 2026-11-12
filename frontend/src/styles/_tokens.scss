@@ -1,0 +1,105 @@
+// Design tokens. Components use these custom properties only - never raw colours -
+// so the light and dark themes stay complete and consistent.
+:root {
+  --sf-font-sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --sf-font-mono: 'JetBrains Mono Variable', ui-monospace, 'Cascadia Code', monospace;
+
+  // Type scale (major second, 14px base - dense administrative UI)
+  --sf-text-xs: 0.75rem;
+  --sf-text-sm: 0.8125rem;
+  --sf-text-md: 0.875rem;
+  --sf-text-lg: 1rem;
+  --sf-text-xl: 1.25rem;
+  --sf-text-2xl: 1.625rem;
+  --sf-text-3xl: 2rem;
+
+  --sf-space-1: 0.25rem;
+  --sf-space-2: 0.5rem;
+  --sf-space-3: 0.75rem;
+  --sf-space-4: 1rem;
+  --sf-space-5: 1.5rem;
+  --sf-space-6: 2rem;
+  --sf-space-7: 3rem;
+
+  // Radii follow hierarchy: controls are tighter than the surfaces that hold them.
+  --sf-radius-sm: 5px;
+  --sf-radius-md: 7px;
+  --sf-radius-lg: 10px;
+  --sf-radius-pill: 999px;
+
+  --sf-sidebar-width: 236px;
+  --sf-topbar-height: 52px;
+  --sf-content-max: 1360px;
+
+  --sf-ease: cubic-bezier(0.2, 0, 0, 1);
+  --sf-duration: 140ms;
+}
+
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --sf-bg: #0d1016;
+  --sf-bg-sunken: #0a0c11;
+  --sf-surface: #141820;
+  --sf-surface-raised: #1a1f29;
+  --sf-surface-hover: #202633;
+  --sf-border: #252b37;
+  --sf-border-strong: #343c4b;
+  --sf-text: #e7eaf0;
+  --sf-text-muted: #9099ab;
+  --sf-text-faint: #646d80;
+
+  --sf-accent: #7b77ff;
+  --sf-accent-hover: #918eff;
+  --sf-accent-soft: rgb(123 119 255 / 14%);
+  --sf-accent-text: #b4b2ff;
+  --sf-on-accent: #ffffff;
+
+  --sf-success: #3ccf91;
+  --sf-success-soft: rgb(60 207 145 / 13%);
+  --sf-warning: #f0b44c;
+  --sf-warning-soft: rgb(240 180 76 / 13%);
+  --sf-danger: #f26d6d;
+  --sf-danger-soft: rgb(242 109 109 / 13%);
+  --sf-info: #56b6f2;
+  --sf-info-soft: rgb(86 182 242 / 13%);
+  --sf-neutral-soft: rgb(144 153 171 / 14%);
+
+  --sf-focus: 0 0 0 2px var(--sf-bg), 0 0 0 4px var(--sf-accent);
+  --sf-shadow-overlay: 0 16px 48px rgb(0 0 0 / 45%), 0 0 0 1px var(--sf-border);
+  --sf-backdrop: rgb(4 6 10 / 62%);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --sf-bg: #f6f7f9;
+  --sf-bg-sunken: #eef0f3;
+  --sf-surface: #ffffff;
+  --sf-surface-raised: #ffffff;
+  --sf-surface-hover: #f1f3f7;
+  --sf-border: #e1e4ea;
+  --sf-border-strong: #c9ced8;
+  --sf-text: #161a22;
+  --sf-text-muted: #5b6475;
+  --sf-text-faint: #8a92a3;
+
+  --sf-accent: #5651e5;
+  --sf-accent-hover: #4843d4;
+  --sf-accent-soft: rgb(86 81 229 / 10%);
+  --sf-accent-text: #4540c9;
+  --sf-on-accent: #ffffff;
+
+  --sf-success: #13895a;
+  --sf-success-soft: rgb(19 137 90 / 10%);
+  --sf-warning: #a86a00;
+  --sf-warning-soft: rgb(196 128 0 / 12%);
+  --sf-danger: #cf3434;
+  --sf-danger-soft: rgb(207 52 52 / 9%);
+  --sf-info: #1675b8;
+  --sf-info-soft: rgb(22 117 184 / 10%);
+  --sf-neutral-soft: rgb(91 100 117 / 10%);
+
+  --sf-focus: 0 0 0 2px var(--sf-bg), 0 0 0 4px var(--sf-accent);
+  --sf-shadow-overlay: 0 16px 40px rgb(22 26 34 / 14%), 0 0 0 1px var(--sf-border);
+  --sf-backdrop: rgb(22 26 34 / 32%);
+}

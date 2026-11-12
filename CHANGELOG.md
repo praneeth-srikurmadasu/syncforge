@@ -4,6 +4,21 @@ All notable changes to SyncForge are recorded here.
 
 ## [Unreleased]
 
+### Phase 8 - Angular frontend (in progress)
+
+#### Added
+- `docs/PHASE_8_FRONTEND_PLAN.md`: repository audit, API inventory, permission matrix,
+  screen-to-endpoint map, unsupported features, architecture and milestones.
+- `frontend/`: Angular 22 application (standalone components, OnPush, zoneless, strict
+  templates) with API types generated from the backend's OpenAPI document, typed API
+  services, an error interceptor producing one `ApiError` type, and a dev-server proxy.
+- Design system: design tokens with a dark default and a light theme, self-hosted Inter and
+  JetBrains Mono, Lucide icons, shell with organization switcher, and shared components.
+- Sign-in, registration and organization creation; session restore per tab, server-side
+  logout, return to the requested page after a 401, guards for organization membership
+  and permissions.
+- Dashboard computed only from existing endpoints, with daily history from the audit log.
+
 ### Phase 7 - Data integrity, conflict resolution and audit logging (complete)
 
 #### Added

@@ -1,0 +1,320 @@
+<div class="sf-page">
+  <sf-page-header
+    title="Dashboard"
+    [description]="
+      'Synchronization health for ' +
+      (org.organization()?.name ?? '') +
+      ', read live from the SyncForge API.'
+    "
+  >
+    <button type="button" class="sf-btn" (click)="refresh()" [disabled]="overview.isLoading()">
+      <sf-icon name="refresh" [size]="14" /> Refresh
+    </button>
+  </sf-page-header>
+
+  @if (overview.error(); as err) {
+    <div class="sf-card"><sf-error-state [error]="err" (retry)="overview.reload()" /></div>
+  } @else {
+    @let o = overview.value();
+    <section class="sf-grid sf-grid--metrics" aria-label="Key figures">
+      <sf-metric
+        label="Active employees"
+        icon="users"
+        [value]="value(o?.employeesActive)"
+        [error]="failed(o?.employeesActive)"
+        [hint]="
+          (value(o?.employeesOnLeave) ?? 0) +
+          ' on leave, ' +
+          (value(o?.employeesTerminated) ?? 0) +
+          ' terminated'
+        "
+      />
+      <sf-metric
+        label="Connected integrations"
+        icon="plug"
+        [value]="connectors() ? connectedCount() + ' / ' + connectors()!.length : null"
+        [error]="!!connectorsError()"
+        hint="Connectors with status connected"
+      />
+      <sf-metric
+        label="Active workflows"
+        icon="workflow"
+        [value]="value(o?.workflowsActive)"
+        [error]="failed(o?.workflowsActive)"
+        [hint]="'of ' + (value(o?.workflowsTotal) ?? 0) + ' configured'"
+      />
+      <sf-metric
+        label="Events in progress"
+        icon="activity"
+        [value]="value(inFlight())"
+        [error]="failed(inFlight())"
+        [tone]="(value(o?.events?.retrying) ?? 0) > 0 ? 'warning' : 'neutral'"
+        [hint]="(value(o?.events?.retrying) ?? 0) + ' waiting to retry'"
+      />
+      <sf-metric
+        label="Open dead letters"
+        icon="inbox"
+        [value]="value(o?.deadLettersOpen)"
+        [error]="failed(o?.deadLettersOpen)"
+        [tone]="(value(o?.deadLettersOpen) ?? 0) > 0 ? 'danger' : 'neutral'"
+        hint="Failed after retries, waiting for replay"
+      />
+      <sf-metric
+        label="Open conflicts"
+        icon="compare"
+        [value]="value(o?.conflictsOpen)"
+        [error]="failed(o?.conflictsOpen)"
+        [tone]="(value(o?.conflictsOpen) ?? 0) > 0 ? 'warning' : 'neutral'"
+        hint="Records that disagree between systems"
+      />
+    </section>
+  }
+
+  <section class="sf-grid sf-grid--2">
+    <div class="sf-card">
+      <div class="sf-card__header">
+        <div>
+          <h2 class="sf-card__title">Workflow executions, last 7 days</h2>
+          @if (activityChart(); as a) {
+            <p class="sub">
+              @if (a.rate !== null) {
+                {{ a.rate }}% succeeded ({{ a.succeeded }} of {{ a.succeeded + a.failed }})
+              } @else {
+                No executions in this period
+              }
+            </p>
+          }
+        </div>
+      </div>
+      <div class="sf-card__body">
+        @if (!canAudit()) {
+          <sf-empty-state
+            icon="shield"
+            title="Needs audit log access"
+            message="Daily history is read from the audit log, which integration managers and administrators can see."
+          />
+        } @else if (activity.error(); as err) {
+          <sf-error-state [error]="err" (retry)="activity.reload()" />
+        } @else if (activityChart(); as a) {
+          <sf-bar-chart
+            [categories]="a.days"
+            [series]="a.outcomes"
+            [stacked]="true"
+            categoryLabel="Day"
+            [summary]="
+              'Workflow executions per day: ' +
+              a.succeeded +
+              ' succeeded, ' +
+              a.failed +
+              ' failed in 7 days'
+            "
+          />
+        } @else {
+          <sf-skeleton [rows]="5" [height]="22" />
+        }
+      </div>
+    </div>
+
+    <div class="sf-card">
+      <div class="sf-card__header">
+        <div>
+          <h2 class="sf-card__title">Retries scheduled, last 7 days</h2>
+          @if (activityChart(); as a) {
+            <p class="sub">{{ a.retryTotal }} retries after temporary connector failures</p>
+          }
+        </div>
+      </div>
+      <div class="sf-card__body">
+        @if (!canAudit()) {
+          <sf-empty-state
+            icon="shield"
+            title="Needs audit log access"
+            message="Retry history is read from the audit log."
+          />
+        } @else if (activity.error(); as err) {
+          <sf-error-state [error]="err" (retry)="activity.reload()" />
+        } @else if (activityChart(); as a) {
+          <sf-bar-chart
+            [categories]="a.days"
+            [series]="a.retries"
+            categoryLabel="Day"
+            [summary]="'Retries scheduled per day: ' + a.retryTotal + ' in 7 days'"
+          />
+        } @else {
+          <sf-skeleton [rows]="5" [height]="22" />
+        }
+      </div>
+    </div>
+  </section>
+
+  <section class="sf-grid sf-grid--2">
+    <div class="sf-card">
+      <div class="sf-card__header">
+        <div>
+          <h2 class="sf-card__title">Event pipeline</h2>
+          @if (eventChart(); as e) {
+            <p class="sub">{{ e.total }} lifecycle events by current status</p>
+          }
+        </div>
+      </div>
+      <div class="sf-card__body">
+        @if (overview.error()) {
+          <p class="sf-muted">Unavailable: the figures above could not be loaded.</p>
+        } @else if (eventChart(); as e) {
+          @if (e.total === 0) {
+            <sf-empty-state
+              icon="activity"
+              title="No events yet"
+              message="Creating, changing or terminating an employee records a lifecycle event here."
+            />
+          } @else {
+            <sf-bar-chart
+              [categories]="e.categories"
+              [series]="e.series"
+              [horizontal]="true"
+              [height]="200"
+              categoryLabel="Status"
+              [summary]="'Events by status, ' + e.total + ' in total'"
+            />
+          }
+        } @else if (overview.isLoading()) {
+          <sf-skeleton [rows]="5" [height]="20" />
+        } @else {
+          <p class="sf-muted">Some event totals could not be loaded.</p>
+        }
+      </div>
+    </div>
+
+    <sf-connector-health
+      [connectors]="connectors()"
+      [error]="connectorsError()"
+      [loading]="overview.isLoading()"
+    />
+  </section>
+
+  <section class="sf-grid sf-grid--2">
+    <div class="sf-card">
+      <div class="sf-card__header"><h2 class="sf-card__title">Recent events</h2></div>
+      @if (recentEvents.error(); as err) {
+        <sf-error-state [error]="err" (retry)="recentEvents.reload()" />
+      } @else if (recentEvents.value(); as page) {
+        @if (page.items.length === 0) {
+          <sf-empty-state icon="activity" title="No events yet" />
+        } @else {
+          <ul class="feed">
+            @for (event of page.items; track event.id) {
+              <li>
+                <sf-status [value]="event.status" />
+                <div class="feed-main">
+                  <span class="feed-title">{{ humanize(event.event_type) }}</span>
+                  <span class="sf-muted"><sf-employee-name [id]="event.employee_id" /></span>
+                </div>
+                <sf-time class="sf-faint" [value]="event.created_at" />
+              </li>
+            }
+          </ul>
+        }
+      } @else {
+        <sf-skeleton [rows]="6" />
+      }
+    </div>
+
+    <div class="sf-card">
+      <div class="sf-card__header"><h2 class="sf-card__title">Recent activity</h2></div>
+      @if (!canAudit()) {
+        <sf-empty-state
+          icon="shield"
+          title="Needs audit log access"
+          message="The activity feed is the audit log, visible to integration managers and administrators."
+        />
+      } @else if (recentAudit.error(); as err) {
+        <sf-error-state [error]="err" (retry)="recentAudit.reload()" />
+      } @else if (recentAudit.value(); as page) {
+        @if (page.items.length === 0) {
+          <sf-empty-state icon="file-clock" title="No activity recorded yet" />
+        } @else {
+          <ul class="feed">
+            @for (entry of page.items; track entry.id) {
+              <li>
+                <span class="outcome" [class.bad]="entry.outcome === 'failure'">
+                  <sf-icon
+                    [name]="entry.outcome === 'failure' ? 'circle-x' : 'circle-check'"
+                    [size]="15"
+                  />
+                  <span class="sf-visually-hidden">{{ entry.outcome }}</span>
+                </span>
+                <div class="feed-main">
+                  <code class="feed-title">{{ entry.action }}</code>
+                  <span class="sf-muted">
+                    {{ entry.actor_type === 'system' ? 'System' : 'User' }} on
+                    {{ humanize(entry.resource_type) }}
+                  </span>
+                </div>
+                <sf-time class="sf-faint" [value]="entry.created_at" />
+              </li>
+            }
+          </ul>
+        }
+      } @else {
+        <sf-skeleton [rows]="6" />
+      }
+    </div>
+  </section>
+
+  <section class="sf-grid sf-grid--2">
+    <div class="sf-card">
+      <div class="sf-card__header">
+        <div>
+          <h2 class="sf-card__title">Employees by department</h2>
+          @if (departmentChart(); as d) {
+            @if (d.hidden > 0) {
+              <p class="sub">Largest 8 departments; {{ d.hidden }} more not shown</p>
+            } @else {
+              <p class="sub">Includes active, on-leave and terminated employees</p>
+            }
+          }
+        </div>
+      </div>
+      <div class="sf-card__body">
+        @if (departments.error(); as err) {
+          <sf-error-state [error]="err" (retry)="departments.reload()" />
+        } @else if (departmentChart(); as d) {
+          @if (d.categories.length === 0) {
+            <sf-empty-state icon="building" title="No departments yet" />
+          } @else {
+            <sf-bar-chart
+              [categories]="d.categories"
+              [series]="d.series"
+              [horizontal]="true"
+              [height]="Math.max(140, d.categories.length * 30)"
+              categoryLabel="Department"
+              summary="Employees per department"
+            />
+          }
+        } @else {
+          <sf-skeleton [rows]="5" [height]="20" />
+        }
+      </div>
+    </div>
+
+    <div class="sf-card">
+      <div class="sf-card__header"><h2 class="sf-card__title">Open conflicts by severity</h2></div>
+      <div class="sf-card__body">
+        @if (severityChart(); as rows) {
+          <ul class="severity">
+            @for (row of rows; track row.key) {
+              <li>
+                <sf-status [value]="row.key" />
+                <span class="sf-num count">{{ row.count }}</span>
+              </li>
+            }
+          </ul>
+        } @else if (overview.isLoading()) {
+          <sf-skeleton [rows]="4" />
+        } @else {
+          <p class="sf-muted">Conflict totals could not be loaded.</p>
+        }
+      </div>
+    </div>
+  </section>
+</div>

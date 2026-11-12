@@ -1,0 +1,33 @@
+// CDK dialog and drawer panels.
+.cdk-overlay-dark-backdrop {
+  background: var(--sf-backdrop);
+}
+
+.sf-dialog-panel {
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow: auto;
+  border-radius: var(--sf-radius-lg);
+  background: var(--sf-surface-raised);
+  box-shadow: var(--sf-shadow-overlay);
+
+  &.sf-dialog-panel--wide {
+    width: min(760px, calc(100vw - 32px));
+  }
+}
+
+.sf-drawer-panel {
+  width: min(560px, 100vw);
+  height: 100vh;
+  overflow: auto;
+  background: var(--sf-surface-raised);
+  box-shadow: var(--sf-shadow-overlay);
+  animation: sf-drawer-in 180ms var(--sf-ease);
+}
+
+@keyframes sf-drawer-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}

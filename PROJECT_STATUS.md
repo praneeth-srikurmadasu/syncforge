@@ -1,6 +1,6 @@
 # SyncForge - Project Status
 
-**Current phase:** 7 complete - awaiting approval to start Phase 8 (Angular frontend). Before Phase 8 starts, the frontend's look and behaviour are to be agreed with the project owner.
+**Current phase:** 8 in progress - Angular frontend. Milestones 1-4 (plan, foundation, authentication, dashboard) delivered; 5-10 next.
 **Last updated:** 2026-11-12
 
 | Phase | Status |
@@ -12,8 +12,35 @@
 | 5 - Workflow engine and event processing | Complete |
 | 6 - Reliability engine and failure recovery | Complete |
 | 7 - Data integrity, conflicts, audit logging | Complete (Part 4 delivered; Windows verification of Part 4 pending) |
-| 8 - Angular frontend | Next (awaiting approval and design discussion) |
+| 8 - Angular frontend | In progress (milestones 1-4 of 10 delivered) |
 | 9-10 | Not started |
+
+## Phase 8 progress
+
+Plan, screen-to-endpoint map and unsupported features: `docs/PHASE_8_FRONTEND_PLAN.md`.
+
+| Milestone | Scope | Status |
+|---|---|---|
+| 1 | Repository audit, `docs/PHASE_8_FRONTEND_PLAN.md` | Done |
+| 2 | Angular 22 workspace (strict TypeScript and templates, `sf` prefix, OnPush, zoneless), generated API types (`npm run api:types` / `api:check`), typed API services, `ApiError` from the error envelope, dev proxy, design tokens (dark default, light theme), self-hosted Inter and JetBrains Mono, Lucide icons, shell (sidebar, organization switcher, user menu, session-expiry notice), shared components (badges, metrics, states, pagination, dialogs, drawer, toasts, chart) | Done |
+| 3 | Login, register, create organization; bearer token in memory + sessionStorage (trade-off documented in the plan), server-side logout, 401 handling with return URL, guards for authentication, organization membership (API-verified) and permissions | Done |
+| 4 | Dashboard from real endpoints only: totals via `limit=1`, 7-day workflow outcomes and retries from audit-log windows, event pipeline, connector health, recent events and audit activity, departments, conflicts by severity; per-figure error display | Done |
+| 5-10 | Workforce, integrations and events, workflows and reliability, data integrity and governance, QA, documentation | Next |
+
+### Phase 8 verification so far (actual results, Linux workspace, Node 22.23.4)
+
+- `npx ng build`: success, initial bundle 340.7 kB raw / 93.4 kB transferred; ECharts is a
+  lazy chunk (561 kB raw) loaded with the first chart.
+- `npm run test:ci`: **33 passed** (9 files). `npx ng lint`: clean. `npm run format:check`:
+  clean. `npm run api:check`: types match the snapshot.
+- Live: dev server against the running API, worker, relay and mocks, driven in headless
+  Chrome: wrong password shows the API's 401 as a sign-in error; a deep link to an
+  organization ID that is not valid ends on "Organization not available" after sign-in;
+  `/` lands on the user's organization; the dashboard showed the demo organization's real
+  figures (12 active employees, 1 of 3 connectors connected, 12 of 13 workflow executions
+  succeeded, 16 retries) in dark, light and 390 px mobile layouts.
+- `npm audit --omit=dev`: 0 vulnerabilities. `npm audit` (all): 15 moderate, all in the
+  ESLint toolchain (`minimatch` ReDoS), development only.
 
 ## Phase 7 progress
 

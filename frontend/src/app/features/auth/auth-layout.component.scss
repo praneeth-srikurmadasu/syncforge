@@ -1,0 +1,120 @@
+.wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  min-height: 100vh;
+}
+
+.form-side {
+  display: flex;
+  flex-direction: column;
+  padding: var(--sf-space-5) var(--sf-space-6);
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.name {
+  font-weight: 650;
+  font-size: var(--sf-text-lg);
+  letter-spacing: -0.02em;
+}
+
+.form-area {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sf-space-6) 0;
+}
+
+.story {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--sf-space-5);
+  padding: var(--sf-space-7);
+  border-left: 1px solid var(--sf-border);
+  background:
+    radial-gradient(circle at 80% 10%, var(--sf-accent-soft), transparent 55%), var(--sf-bg-sunken);
+}
+
+.statement {
+  font-size: clamp(1.75rem, 2.6vw, 2.5rem);
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.035em;
+  max-width: 16ch;
+}
+
+.flow {
+  width: 100%;
+  max-width: 440px;
+
+  .lines path {
+    fill: none;
+    stroke: var(--sf-border-strong);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 5;
+    animation: flow 1.6s linear infinite;
+  }
+
+  .node rect {
+    fill: var(--sf-surface);
+    stroke: var(--sf-border-strong);
+  }
+
+  .node text {
+    fill: var(--sf-text);
+    font-size: 13px;
+    font-weight: 500;
+    text-anchor: middle;
+  }
+
+  .hub rect {
+    fill: var(--sf-accent);
+    stroke: none;
+  }
+
+  .hub circle {
+    fill: #fff;
+  }
+}
+
+@keyframes flow {
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+
+.points {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sf-space-2);
+  margin: 0;
+  padding-left: 1.1em;
+  max-width: 52ch;
+  color: var(--sf-text-muted);
+}
+
+.note {
+  max-width: 52ch;
+  font-size: var(--sf-text-xs);
+  color: var(--sf-text-faint);
+}
+
+@media (max-width: 960px) {
+  .wrap {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .story {
+    display: none;
+  }
+
+  .form-side {
+    padding: var(--sf-space-4);
+  }
+}
