@@ -85,7 +85,8 @@ def purge_expired_rows(session: Session, *, now: datetime | None = None) -> tupl
 
 
 def _prompt_password() -> str:
-    password = getpass.getpass("Password (12-128 characters): ")
+    limits = f"{PASSWORD_MIN_LENGTH}-{PASSWORD_MAX_LENGTH} characters"
+    password = getpass.getpass(f"Password ({limits}): ")
     if password != getpass.getpass("Repeat password: "):
         raise ValueError("Passwords do not match.")
     return password

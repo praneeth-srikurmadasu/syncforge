@@ -120,7 +120,7 @@ export class BarChartComponent {
     return {
       animationDuration: 300,
       textStyle: { fontFamily: token('--sf-font-sans') },
-      grid: { left: 8, right: 12, top: series.length > 1 ? 32 : 12, bottom: 4, containLabel: true },
+      grid: { left: 8, right: 12, top: series.length > 1 ? 32 : 12, bottom: 4 },
       legend:
         series.length > 1
           ? {

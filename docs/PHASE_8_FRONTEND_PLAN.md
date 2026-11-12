@@ -106,7 +106,7 @@ Super Admins hold every permission. The frontend copy of this matrix only decide
 | Employee directory | `GET .../employees`, `GET .../departments` | `employees:read` | search, filter, sort, paginate; create, edit, terminate, archive (`employees:write`) |
 | Employee details | `GET .../employees/{id}`, `GET .../employees?manager_id=`, `GET .../events?employee_id=`, `GET .../conflicts?employee_id=`, `GET .../audit-logs?resource_type=employee&resource_id=` | `employees:read` (+ `audit:read` for history) | edit (If-Match), terminate, archive |
 | Departments | `GET/POST .../departments`, `PATCH/DELETE .../{id}` | `departments:read` / `:manage` | create, rename, delete (refused while in use) |
-| Reporting structure | `GET .../employees/{id}` (manager chain via `manager` refs), `GET .../employees?manager_id=` (direct reports, lazily) | `employees:read` | navigate up and down the reporting lines |
+| Reporting structure | `GET .../employees` read page by page (100 per request, up to 1,000 people) and grouped by `manager`; the employee page shows the chain above a person (`GET .../employees/{id}` per level) and direct reports (`?manager_id=`) | `employees:read` | expand / collapse teams, open a person |
 | Connector Center | `GET /connector-types`, `GET .../connectors` | `connectors:read` | create (`connectors:manage`) |
 | Connector details | `GET .../connectors/{id}`, `GET .../accounts`, `GET .../dead-letter-events?connector_id=`, `GET .../conflicts?connector_id=` | `connectors:read` | test, rename/config, rotate credentials, disconnect, reconcile (`connectors:manage` / `conflicts:resolve`) |
 | Event monitor | `GET .../events` | `events:read` | filter by status, type, employee; paginate |

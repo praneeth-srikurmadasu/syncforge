@@ -1,6 +1,6 @@
 # SyncForge - Project Status
 
-**Current phase:** 8 in progress - Angular frontend. Milestones 1-4 (plan, foundation, authentication, dashboard) delivered; 5-10 next.
+**Current phase:** 8 in progress - Angular frontend. Milestones 1-5 delivered (1-4 verified on Windows); 6-10 next.
 **Last updated:** 2026-11-12
 
 | Phase | Status |
@@ -11,8 +11,8 @@
 | 4 - Connector framework and mock services | Complete |
 | 5 - Workflow engine and event processing | Complete |
 | 6 - Reliability engine and failure recovery | Complete |
-| 7 - Data integrity, conflicts, audit logging | Complete (Part 4 delivered; Windows verification of Part 4 pending) |
-| 8 - Angular frontend | In progress (milestones 1-4 of 10 delivered) |
+| 7 - Data integrity, conflicts, audit logging | Complete |
+| 8 - Angular frontend | In progress (milestones 1-5 of 10 delivered) |
 | 9-10 | Not started |
 
 ## Phase 8 progress
@@ -25,9 +25,34 @@ Plan, screen-to-endpoint map and unsupported features: `docs/PHASE_8_FRONTEND_PL
 | 2 | Angular 22 workspace (strict TypeScript and templates, `sf` prefix, OnPush, zoneless), generated API types (`npm run api:types` / `api:check`), typed API services, `ApiError` from the error envelope, dev proxy, design tokens (dark default, light theme), self-hosted Inter and JetBrains Mono, Lucide icons, shell (sidebar, organization switcher, user menu, session-expiry notice), shared components (badges, metrics, states, pagination, dialogs, drawer, toasts, chart) | Done |
 | 3 | Login, register, create organization; bearer token in memory + sessionStorage (trade-off documented in the plan), server-side logout, 401 handling with return URL, guards for authentication, organization membership (API-verified) and permissions | Done |
 | 4 | Dashboard from real endpoints only: totals via `limit=1`, 7-day workflow outcomes and retries from audit-log windows, event pipeline, connector health, recent events and audit activity, departments, conflicts by severity; per-figure error display | Done |
-| 5-10 | Workforce, integrations and events, workflows and reliability, data integrity and governance, QA, documentation | Next |
+| 5 | Workforce: employee directory (search, department, status, location, joining-date range, archived, sort, pagination; filters in the URL), add / edit dialog (changed fields only, `If-Match`, `Idempotency-Key`, 412 recovery, manager search), employee page (reporting line, direct reports, sync events, conflicts, change history), terminate (typed confirmation) and archive, departments (add, rename, delete when empty), reporting lines tree, top-bar employee search | Done |
+| 5a | Owner-requested changes: password minimum 8 (backend, CLI, docs, tests), show / hide password toggle, Caps Lock notice, strength hint, clear message when the API is not running | Done |
+| 6-10 | Integrations and events, workflows and reliability, data integrity and governance, QA, documentation | Next |
 
-### Phase 8 verification so far (actual results, Linux workspace, Node 22.23.4)
+### Phase 8 verification so far (actual results)
+
+- Windows (milestones 1-4, commit `a7e06a7`): `npm ci`, `npx ng build` (initial 340.70 kB),
+  `npm run test:ci` **33 passed**, `npx ng lint` clean, `npm run format:check` clean,
+  `npm run api:check` types match; the project owner signed up, created an organization
+  and used the dashboard against the local stack.
+- Milestone 5, Linux workspace (Node 22.23.4): build success (initial 346.1 kB raw /
+  94.7 kB transferred); `npm run test:ci` **40 passed** (11 files); lint and format clean.
+  Headless Chrome against the running stack: search and status filter reflected in the
+  URL; a new employee created with department and manager, and onboarding events completed
+  by the worker; while the edit dialog was open the same employee was changed through the
+  API, the dialog's save got `412` and showed the concurrent-change message, "Load latest
+  version" brought in the other change, and the second save succeeded (version 3); change
+  history and sync events listed; terminate with typed confirmation, then archive;
+  department added, renamed and deleted; reporting lines drawn three levels deep.
+
+- Milestone 5a, Linux workspace: backend `ruff check` / `ruff format --check` clean,
+  `python -m pytest` **527 passed** (new test: an 8-character password is accepted; the
+  7-character case is refused); frontend `npm run test:ci` **44 passed**, lint and format
+  clean, `npm run api:check` after regenerating the OpenAPI snapshot. Browser: with the
+  API stopped, sign-in showed "The SyncForge API is not responding..."; with it running, a
+  new account registered with `abcd1234`, the toggle switched the field to plain text.
+
+#### Milestones 1-4, Linux workspace (Node 22.23.4)
 
 - `npx ng build`: success, initial bundle 340.7 kB raw / 93.4 kB transferred; ECharts is a
   lazy chunk (561 kB raw) loaded with the first chart.
@@ -49,7 +74,7 @@ Plan, screen-to-endpoint map and unsupported features: `docs/PHASE_8_FRONTEND_PL
 | 1 | Append-only audit log (`audit_logs`, migration `0010`): written in the same transaction as each change, user or system actor, request ID, no secrets or personal values, trigger refusing UPDATE/DELETE; `GET .../audit-logs`; `audit:read` | Done | Windows 11, Python 3.13.17, Docker PostgreSQL 16, Redis 7 |
 | 2 | Optimistic concurrency on employees: `version` (migration `0011`), `ETag`, `If-Match` on PATCH / terminate / archive, `412 version_conflict` | Done | same |
 | 3 | Field-level source-of-truth policies, reconciliation (conflict detection), resolution with override / staleness / permission checks, history (`data_source_policies`, `data_conflicts`, `conflict_resolutions`, migration `0012`); connectors read back department, designation, location; `conflicts:read`, `conflicts:resolve`, `policies:manage` | Done | same |
-| 4 | docs/14, ADR-0017 to ADR-0019, updates to docs 05, 07, 08, 10, 12, 15, 21, README; demo scenarios 6 (data conflict) and 7 (concurrent edits, audit trail) | Done | Linux development workspace; Windows run pending (this delivery) |
+| 4 | docs/14, ADR-0017 to ADR-0019, updates to docs 05, 07, 08, 10, 12, 15, 21, README; demo scenarios 6 (data conflict) and 7 (concurrent edits, audit trail) | Done | Linux workspace; Windows checks reported successful by the project owner (output not recorded here) |
 
 ### Phase 7 verification (actual results)
 
@@ -362,6 +387,8 @@ Plan, screen-to-endpoint map and unsupported features: `docs/PHASE_8_FRONTEND_PL
 - Free-text employee search is a substring scan within one organization (no trigram index).
 - Members can only be added if they already registered (no email invitations yet).
 - No rate limiting on login/register yet - Phase 9.
+- Passwords: minimum 8 characters, no breached-password check and no MFA yet (docs/15
+  section 10); NIST SP 800-63B-4 recommends 15+ characters when a password is the only factor.
 - No refresh tokens: users log in again after 30 minutes.
 - One unidentified intermittent test failure seen once at the end of Phase 5 (Linux
   workspace, 1 of 15 full runs, test name not captured). It has not reappeared in any

@@ -1,0 +1,167 @@
+<div class="sf-page">
+  @if (employee.error(); as err) {
+    <sf-page-header
+      title="Employee"
+      [crumbs]="[
+        { label: 'Employees', link: ['/o', org.orgId(), 'employees'] },
+        { label: 'Employee' },
+      ]"
+    />
+    <div class="sf-card"><sf-error-state [error]="err" (retry)="employee.reload()" /></div>
+  } @else if (employee.hasValue()) {
+    @let e = employee.value();
+    <sf-page-header
+      [title]="e.full_name"
+      [crumbs]="[
+        { label: 'Employees', link: ['/o', org.orgId(), 'employees'] },
+        { label: e.full_name },
+      ]"
+    >
+      <div meta class="meta">
+        <sf-status [value]="e.archived_at ? 'archived' : e.employment_status" />
+        <code class="sf-muted">{{ e.employee_number }}</code>
+        @if (e.designation) {
+          <span class="sf-muted">{{ e.designation }}</span>
+        }
+      </div>
+      @if (org.can('employees:write')) {
+        @if (!isTerminated()) {
+          <button type="button" class="sf-btn" (click)="edit(e)">
+            <sf-icon name="pencil" [size]="14" /> Edit
+          </button>
+          <button type="button" class="sf-btn danger-outline" (click)="terminate(e)">
+            <sf-icon name="user-minus" [size]="14" /> Terminate
+          </button>
+        } @else if (!e.archived_at) {
+          <button type="button" class="sf-btn" (click)="archive(e)">
+            <sf-icon name="archive" [size]="14" /> Archive
+          </button>
+        }
+      }
+    </sf-page-header>
+
+    @if (isTerminated()) {
+      <div class="sf-alert sf-alert--info" role="status">
+        Terminated on {{ formatDate(e.termination_date) }}. Terminated records cannot be edited.
+        @if (e.archived_at) {
+          Archived <sf-time [value]="e.archived_at" />.
+        }
+      </div>
+    }
+
+    <nav class="chain sf-card" aria-label="Reporting line">
+      <sf-icon name="network" [size]="15" />
+      @if (chain.isLoading()) {
+        <span class="sf-faint">Loading reporting line…</span>
+      } @else {
+        @for (m of chain.value() ?? []; track m.id) {
+          <a [routerLink]="['/o', org.orgId(), 'employees', m.id]">{{ m.full_name }}</a>
+          <sf-icon name="chevron-right" [size]="12" />
+        } @empty {
+          <span class="sf-muted">No manager</span>
+          <sf-icon name="chevron-right" [size]="12" />
+        }
+        <strong>{{ e.full_name }}</strong>
+        @if (reports.value()?.total) {
+          <span class="sf-muted">({{ reports.value()!.total }} direct reports)</span>
+        }
+      }
+    </nav>
+
+    <div class="sf-card">
+      <sf-tabs [tabs]="tabs()" [(active)]="tab" />
+      <div class="panel" role="tabpanel" [attr.aria-labelledby]="'tab-' + tab()">
+        @switch (tab()) {
+          @case ('overview') {
+            <div class="sf-grid sf-grid--2 overview">
+              <dl class="sf-dl">
+                <dt>Work email</dt>
+                <dd>{{ e.email }}</dd>
+                <dt>Department</dt>
+                <dd>{{ e.department?.name ?? '-' }}</dd>
+                <dt>Designation</dt>
+                <dd>{{ e.designation ?? '-' }}</dd>
+                <dt>Location</dt>
+                <dd>{{ e.location ?? '-' }}</dd>
+                <dt>Manager</dt>
+                <dd>
+                  @if (e.manager) {
+                    <a [routerLink]="['/o', org.orgId(), 'employees', e.manager.id]">{{
+                      e.manager.full_name
+                    }}</a>
+                  } @else {
+                    -
+                  }
+                </dd>
+              </dl>
+              <dl class="sf-dl">
+                <dt>Joining date</dt>
+                <dd>{{ formatDate(e.joining_date) }}</dd>
+                <dt>Termination date</dt>
+                <dd>{{ formatDate(e.termination_date) }}</dd>
+                <dt>Record version</dt>
+                <dd>
+                  <code>{{ e.version }}</code>
+                </dd>
+                <dt>Created</dt>
+                <dd><sf-time [value]="e.created_at" [absoluteOnly]="true" /></dd>
+                <dt>Last updated</dt>
+                <dd><sf-time [value]="e.updated_at" [absoluteOnly]="true" /></dd>
+                <dt>ID</dt>
+                <dd><sf-id [value]="e.id" [short]="false" /></dd>
+              </dl>
+            </div>
+            <p class="note sf-faint">
+              Linked accounts are listed per connector on each connector's page; the API has no
+              per-employee account list.
+            </p>
+          }
+          @case ('reports') {
+            @if (reports.error(); as err) {
+              <sf-error-state [error]="err" (retry)="reports.reload()" />
+            } @else if (reports.value(); as page) {
+              @if (page.items.length === 0) {
+                <sf-empty-state icon="users" title="No direct reports" />
+              } @else {
+                <table class="sf-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Name</th>
+                      <th scope="col">Designation</th>
+                      <th scope="col">Department</th>
+                      <th scope="col">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (r of page.items; track r.id) {
+                      <tr>
+                        <td>
+                          <a [routerLink]="['/o', org.orgId(), 'employees', r.id]">{{
+                            r.full_name
+                          }}</a>
+                        </td>
+                        <td>{{ r.designation ?? '-' }}</td>
+                        <td>{{ r.department?.name ?? '-' }}</td>
+                        <td><sf-status [value]="r.employment_status" /></td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+                @if (page.total > page.items.length) {
+                  <p class="note sf-faint">Showing {{ page.items.length }} of {{ page.total }}.</p>
+                }
+              }
+            } @else {
+              <sf-skeleton [rows]="4" />
+            }
+          }
+          @default {
+            <sf-employee-activity [employeeId]="e.id" [kind]="$any(tab())" />
+          }
+        }
+      </div>
+    </div>
+  } @else {
+    <sf-skeleton [rows]="10" />
+  }
+</div>

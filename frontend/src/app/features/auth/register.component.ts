@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import {
   AbstractControl,
   FormBuilder,
@@ -12,6 +12,8 @@ import { ApiError } from '../../core/api/api-error';
 import { AuthApi } from '../../core/api/auth.api';
 import { SessionService } from '../../core/auth/session.service';
 import { applyServerErrors, controlError } from '../../shared/forms';
+import { PasswordFieldComponent, passwordStrength } from '../../shared/ui/password-field.component';
+import { toSignal } from '@angular/core/rxjs-interop';
 
 function passwordsMatch(group: AbstractControl): ValidationErrors | null {
   const password = group.get('password')?.value;
@@ -30,7 +32,7 @@ type Field = 'full_name' | 'email' | 'password' | 'confirm';
 
 @Component({
   selector: 'sf-register',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, PasswordFieldComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <h1>Create your account</h1>
@@ -73,29 +75,41 @@ type Field = 'full_name' | 'email' | 'password' | 'confirm';
       </div>
       <div class="sf-field">
         <label for="password">Password</label>
-        <input
-          id="password"
-          class="sf-input"
-          type="password"
-          formControlName="password"
-          autocomplete="new-password"
-          aria-describedby="password-hint"
-        />
+        <sf-password-field>
+          <input
+            id="password"
+            class="sf-input"
+            type="password"
+            formControlName="password"
+            autocomplete="new-password"
+            aria-describedby="password-hint"
+          />
+        </sf-password-field>
         @if (err('password', 'Password'); as m) {
           <span class="sf-field__error">{{ m }}</span>
         } @else {
-          <span class="sf-field__hint" id="password-hint">At least 12 characters.</span>
+          <div class="sf-field__hint strength" id="password-hint" aria-live="polite">
+            <span>At least 8 characters. A longer passphrase is stronger than symbols.</span>
+            @if (password()) {
+              <span class="meter" [attr.data-level]="strength()">
+                <span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+                Strength: {{ strengthLabel() }}
+              </span>
+            }
+          </div>
         }
       </div>
       <div class="sf-field">
         <label for="confirm">Confirm password</label>
-        <input
-          id="confirm"
-          class="sf-input"
-          type="password"
-          formControlName="confirm"
-          autocomplete="new-password"
-        />
+        <sf-password-field>
+          <input
+            id="confirm"
+            class="sf-input"
+            type="password"
+            formControlName="confirm"
+            autocomplete="new-password"
+          />
+        </sf-password-field>
         @if (err('confirm', 'Confirmation'); as m) {
           <span class="sf-field__error">{{ m }}</span>
         }
@@ -107,6 +121,40 @@ type Field = 'full_name' | 'email' | 'password' | 'confirm';
     <p class="alt">Already registered? <a routerLink="/login">Sign in</a></p>
   `,
   styleUrl: './auth-form.scss',
+  styles: `
+    .strength {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .meter {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .bars {
+      display: inline-flex;
+      gap: 3px;
+    }
+    .bars i {
+      width: 22px;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--sf-border-strong);
+    }
+    [data-level='weak'] .bars i:nth-child(-n + 1) {
+      background: var(--sf-danger);
+    }
+    [data-level='fair'] .bars i:nth-child(-n + 2) {
+      background: var(--sf-warning);
+    }
+    [data-level='good'] .bars i:nth-child(-n + 3) {
+      background: var(--sf-info);
+    }
+    [data-level='strong'] .bars i {
+      background: var(--sf-success);
+    }
+  `,
 })
 export class RegisterComponent {
   private readonly api = inject(AuthApi);
@@ -117,10 +165,17 @@ export class RegisterComponent {
     {
       full_name: ['', [Validators.required, Validators.maxLength(200)]],
       email: ['', [Validators.required, Validators.email]],
-      password: ['', [Validators.required, Validators.minLength(12), Validators.maxLength(128)]],
+      password: ['', [Validators.required, Validators.minLength(8), Validators.maxLength(128)]],
       confirm: ['', [Validators.required]],
     },
     { validators: passwordsMatch },
+  );
+  protected readonly password = toSignal(this.form.controls.password.valueChanges, {
+    initialValue: '',
+  });
+  protected readonly strength = computed(() => passwordStrength(this.password()));
+  protected readonly strengthLabel = computed(
+    () => ({ weak: 'too short', fair: 'fair', good: 'good', strong: 'strong' })[this.strength()],
   );
   protected readonly busy = signal(false);
   protected readonly error = signal<ApiError | null>(null);

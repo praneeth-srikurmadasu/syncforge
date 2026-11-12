@@ -33,7 +33,7 @@ def test_promotes_existing_user_without_changing_password(db_session: Session) -
 
 
 def test_rejects_weak_password_for_new_superadmin(db_session: Session) -> None:
-    with pytest.raises(ValueError, match="12-128"):
+    with pytest.raises(ValueError, match="8-128"):
         create_superadmin(db_session, email="new@example.com", full_name="New", password="short")
 
 

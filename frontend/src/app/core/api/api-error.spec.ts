@@ -37,7 +37,7 @@ describe('ApiError', () => {
         error: '<html>proxy error</html>',
       }),
     );
-    expect(error.message).toBe('502 Bad Gateway');
+    expect(error.code).toBe('api_unreachable');
     expect(error.requestId).toBe('abc');
   });
 
@@ -56,6 +56,33 @@ describe('ApiError', () => {
       { field: 'email', message: 'value is not a valid email address' },
       { field: 'limit', message: 'too large' },
     ]);
+  });
+
+  it('explains a gateway error that did not come from the API', () => {
+    const error = ApiError.from(
+      new HttpErrorResponse({ status: 502, statusText: 'Bad Gateway', error: 'proxy error' }),
+    );
+    expect(error.code).toBe('api_unreachable');
+    expect(error.isNetwork).toBe(true);
+    expect(error.message).toContain('not responding');
+  });
+
+  it('keeps a connector failure reported by the API as a 502 with its envelope', () => {
+    const error = ApiError.from(
+      new HttpErrorResponse({
+        status: 502,
+        error: {
+          error: {
+            code: 'connector_error',
+            message: 'Slack failed.',
+            details: null,
+            request_id: 'r',
+          },
+        },
+      }),
+    );
+    expect(error.code).toBe('connector_error');
+    expect(error.isNetwork).toBe(false);
   });
 
   it('returns the same instance when given an ApiError', () => {

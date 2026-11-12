@@ -4,6 +4,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ApiError } from '../../core/api/api-error';
 import { SessionService } from '../../core/auth/session.service';
 import { controlError, safeReturnUrl } from '../../shared/forms';
+import { PasswordFieldComponent } from '../../shared/ui/password-field.component';
 
 const END_MESSAGES: Record<string, string> = {
   expired: 'Your session expired. Sign in again to continue.',
@@ -13,7 +14,7 @@ const END_MESSAGES: Record<string, string> = {
 
 @Component({
   selector: 'sf-login',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, PasswordFieldComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <h1>Sign in</h1>
@@ -51,15 +52,17 @@ const END_MESSAGES: Record<string, string> = {
       </div>
       <div class="sf-field">
         <label for="password">Password</label>
-        <input
-          id="password"
-          class="sf-input"
-          type="password"
-          formControlName="password"
-          autocomplete="current-password"
-          [attr.aria-invalid]="!!err('password', 'Password')"
-          aria-describedby="password-error"
-        />
+        <sf-password-field>
+          <input
+            id="password"
+            class="sf-input"
+            type="password"
+            formControlName="password"
+            autocomplete="current-password"
+            [attr.aria-invalid]="!!err('password', 'Password')"
+            aria-describedby="password-error"
+          />
+        </sf-password-field>
         @if (err('password', 'Password'); as message) {
           <span class="sf-field__error" id="password-error">{{ message }}</span>
         }

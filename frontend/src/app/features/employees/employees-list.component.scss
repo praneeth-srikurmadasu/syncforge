@@ -1,0 +1,22 @@
+.name {
+  display: block;
+  color: var(--sf-text);
+}
+
+.email {
+  display: block;
+  font-size: var(--sf-text-xs);
+}
+
+.sf-filters .date {
+  width: 150px;
+}
+
+.archived {
+  height: 34px;
+}
+
+.stale {
+  opacity: 0.6;
+  transition: opacity var(--sf-duration);
+}

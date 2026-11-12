@@ -64,14 +64,22 @@ def test_register_rejects_duplicate_email_case_insensitively(
 
 def test_register_rejects_short_password_without_echoing_it(client: TestClient) -> None:
     response = client.post(
-        REGISTER, json={"email": "bob@acme.example", "password": "short-pw", "full_name": "Bob"}
+        REGISTER, json={"email": "bob@acme.example", "password": "short-p", "full_name": "Bob"}
     )
 
     assert response.status_code == 422
     error = response.json()["error"]
     assert error["code"] == "validation_error"
     assert error["details"][0]["field"] == "password"
-    assert "short-pw" not in response.text
+    assert "short-p" not in response.text
+
+
+def test_register_accepts_an_eight_character_password(client: TestClient) -> None:
+    response = client.post(
+        REGISTER, json={"email": "eve@acme.example", "password": "eight-ch", "full_name": "Eve"}
+    )
+
+    assert response.status_code == 201
 
 
 def test_register_rejects_invalid_email_and_blank_name(client: TestClient) -> None:

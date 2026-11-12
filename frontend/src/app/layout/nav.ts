@@ -19,4 +19,22 @@ export const NAV: NavGroup[] = [
     label: 'Overview',
     items: [{ label: 'Dashboard', path: 'dashboard', icon: 'dashboard', permission: 'org:read' }],
   },
+  {
+    label: 'Workforce',
+    items: [
+      { label: 'Employees', path: 'employees', icon: 'users', permission: 'employees:read' },
+      {
+        label: 'Departments',
+        path: 'departments',
+        icon: 'building',
+        permission: 'departments:read',
+      },
+      {
+        label: 'Reporting lines',
+        path: 'reporting',
+        icon: 'network',
+        permission: 'employees:read',
+      },
+    ],
+  },
 ];

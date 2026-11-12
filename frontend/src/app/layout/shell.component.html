@@ -81,6 +81,19 @@
       >
         <sf-icon name="menu" />
       </button>
+      @if (org.can('employees:read')) {
+        <form class="search" role="search" (submit)="searchEmployees($event, searchBox.value)">
+          <sf-icon name="search" [size]="15" />
+          <label class="sf-visually-hidden" for="global-search">Search employees</label>
+          <input
+            #searchBox
+            id="global-search"
+            type="search"
+            placeholder="Search employees"
+            autocomplete="off"
+          />
+        </form>
+      }
       <span class="sf-spacer"></span>
       <button
         type="button"

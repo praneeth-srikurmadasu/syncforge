@@ -61,6 +61,44 @@ export const routes: Routes = [
           import('./features/dashboard/dashboard.component').then((m) => m.DashboardComponent),
       },
       {
+        path: 'employees',
+        title: 'Employees · SyncForge',
+        canActivate: [permissionGuard],
+        data: { permission: 'employees:read' },
+        loadComponent: () =>
+          import('./features/employees/employees-list.component').then(
+            (m) => m.EmployeesListComponent,
+          ),
+      },
+      {
+        path: 'employees/:id',
+        title: 'Employee · SyncForge',
+        canActivate: [permissionGuard],
+        data: { permission: 'employees:read' },
+        loadComponent: () =>
+          import('./features/employees/employee-detail.component').then(
+            (m) => m.EmployeeDetailComponent,
+          ),
+      },
+      {
+        path: 'departments',
+        title: 'Departments · SyncForge',
+        canActivate: [permissionGuard],
+        data: { permission: 'departments:read' },
+        loadComponent: () =>
+          import('./features/departments/departments.component').then(
+            (m) => m.DepartmentsComponent,
+          ),
+      },
+      {
+        path: 'reporting',
+        title: 'Reporting lines · SyncForge',
+        canActivate: [permissionGuard],
+        data: { permission: 'employees:read' },
+        loadComponent: () =>
+          import('./features/reporting/reporting.component').then((m) => m.ReportingComponent),
+      },
+      {
         path: 'forbidden',
         title: 'Not permitted · SyncForge',
         loadComponent: () =>

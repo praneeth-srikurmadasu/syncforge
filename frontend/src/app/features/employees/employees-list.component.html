@@ -1,0 +1,188 @@
+<div class="sf-page">
+  <sf-page-header
+    title="Employees"
+    description="The employee records SyncForge keeps in step with your connected applications."
+  >
+    @if (org.can('employees:write')) {
+      <button type="button" class="sf-btn sf-btn--primary" (click)="create()">
+        <sf-icon name="user-plus" [size]="15" /> Add employee
+      </button>
+    }
+  </sf-page-header>
+
+  <div class="sf-card">
+    <div class="sf-filters" role="search">
+      <div class="sf-field sf-field--grow">
+        <label for="emp-search">Search</label>
+        <input
+          id="emp-search"
+          class="sf-input"
+          type="search"
+          placeholder="Name, email or employee number"
+          [formControl]="search"
+        />
+      </div>
+      <div class="sf-field">
+        <label for="emp-dept">Department</label>
+        <select
+          id="emp-dept"
+          class="sf-select"
+          [value]="q.get('department')"
+          (change)="setFilter('department', $event)"
+        >
+          <option value="">All departments</option>
+          @for (d of departments.value()?.items ?? []; track d.id) {
+            <option [value]="d.id" [selected]="d.id === q.get('department')">{{ d.name }}</option>
+          }
+        </select>
+      </div>
+      <div class="sf-field">
+        <label for="emp-status">Status</label>
+        <select
+          id="emp-status"
+          class="sf-select"
+          [value]="q.get('status')"
+          (change)="setFilter('status', $event)"
+        >
+          <option value="">Any status</option>
+          <option value="active" [selected]="q.get('status') === 'active'">Active</option>
+          <option value="on_leave" [selected]="q.get('status') === 'on_leave'">On leave</option>
+          <option value="terminated" [selected]="q.get('status') === 'terminated'">
+            Terminated
+          </option>
+        </select>
+      </div>
+      <div class="sf-field">
+        <label for="emp-location">Location</label>
+        <input
+          id="emp-location"
+          class="sf-input"
+          [value]="q.get('location')"
+          (change)="setFilter('location', $event)"
+          placeholder="Exact, any case"
+        />
+      </div>
+      <div class="sf-field date">
+        <label for="emp-from">Joined from</label>
+        <input
+          id="emp-from"
+          class="sf-input"
+          type="date"
+          [value]="q.get('from')"
+          (change)="setFilter('from', $event)"
+        />
+      </div>
+      <div class="sf-field date">
+        <label for="emp-to">Joined to</label>
+        <input
+          id="emp-to"
+          class="sf-input"
+          type="date"
+          [value]="q.get('to')"
+          (change)="setFilter('to', $event)"
+        />
+      </div>
+      <div class="sf-field">
+        <label for="emp-sort">Sort</label>
+        <select id="emp-sort" class="sf-select" (change)="setFilter('sort', $event)">
+          @for (s of sorts; track s.value) {
+            <option [value]="s.value" [selected]="s.value === (q.get('sort') || 'last_name')">
+              {{ s.label }}
+            </option>
+          }
+        </select>
+      </div>
+      <label class="sf-checkbox archived">
+        <input
+          type="checkbox"
+          [checked]="q.get('archived') === 'true'"
+          (change)="setFilter('archived', $event)"
+        />
+        Include archived
+      </label>
+      @if (hasFilters()) {
+        <button type="button" class="sf-btn sf-btn--ghost" (click)="clearFilters()">
+          Clear filters
+        </button>
+      }
+    </div>
+
+    @if (employees.error(); as err) {
+      <sf-error-state [error]="err" (retry)="employees.reload()" />
+    } @else if (employees.hasValue()) {
+      @let page = employees.value();
+      @if (page.items.length === 0) {
+        @if (hasFilters()) {
+          <sf-empty-state
+            icon="search"
+            title="No employees match these filters"
+            message="Change or clear the filters to see more people."
+          >
+            <button type="button" class="sf-btn" (click)="clearFilters()">Clear filters</button>
+          </sf-empty-state>
+        } @else {
+          <sf-empty-state
+            icon="users"
+            title="No employees yet"
+            message="Add the first employee; SyncForge records an onboarding event for each new hire."
+          >
+            @if (org.can('employees:write')) {
+              <button type="button" class="sf-btn sf-btn--primary" (click)="create()">
+                Add employee
+              </button>
+            }
+          </sf-empty-state>
+        }
+      } @else {
+        <div class="sf-table-wrap" [class.stale]="employees.isLoading()">
+          <table class="sf-table">
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Employee no.</th>
+                <th scope="col">Department</th>
+                <th scope="col">Designation</th>
+                <th scope="col">Manager</th>
+                <th scope="col">Status</th>
+                <th scope="col">Joined</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (e of page.items; track e.id) {
+                <tr class="sf-row-link" (click)="open(e)">
+                  <td>
+                    <a
+                      class="sf-cell-primary name"
+                      [routerLink]="['/o', org.orgId(), 'employees', e.id]"
+                      (click)="$event.stopPropagation()"
+                      >{{ e.full_name }}</a
+                    >
+                    <span class="sf-faint email">{{ e.email }}</span>
+                  </td>
+                  <td>
+                    <code>{{ e.employee_number }}</code>
+                  </td>
+                  <td>{{ e.department?.name ?? '-' }}</td>
+                  <td>{{ e.designation ?? '-' }}</td>
+                  <td>{{ e.manager?.full_name ?? '-' }}</td>
+                  <td>
+                    <sf-status [value]="e.archived_at ? 'archived' : e.employment_status" />
+                  </td>
+                  <td class="sf-num">{{ formatDate(e.joining_date) }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <sf-pagination
+          [total]="page.total"
+          [limit]="page.limit"
+          [offset]="page.offset"
+          (offsetChange)="q.set({ offset: $event || null }, false)"
+        />
+      }
+    } @else {
+      <sf-skeleton [rows]="8" />
+    }
+  </div>
+</div>

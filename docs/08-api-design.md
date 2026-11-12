@@ -119,7 +119,7 @@ Request:
 | Field | Rules |
 |---|---|
 | email | valid email; normalised to lowercase |
-| password | 12-128 characters |
+| password | 8-128 characters, any characters (no composition rules) |
 | full_name | 1-200 characters after trimming whitespace |
 
 `201`:

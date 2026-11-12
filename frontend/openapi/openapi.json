@@ -3297,7 +3297,7 @@
           "password": {
             "format": "password",
             "maxLength": 128,
-            "minLength": 12,
+            "minLength": 8,
             "title": "Password",
             "type": "string",
             "writeOnly": true

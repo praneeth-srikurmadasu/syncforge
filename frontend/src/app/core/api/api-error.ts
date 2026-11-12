@@ -23,8 +23,9 @@ export class ApiError extends Error {
     this.name = 'ApiError';
   }
 
+  /** The API could not be reached at all (no connection, or only a proxy answered). */
   get isNetwork(): boolean {
-    return this.status === 0;
+    return this.status === 0 || this.code === 'api_unreachable';
   }
 
   /** Field issues from a 422 response: `details` is `[{field, message, type}]`. */
@@ -59,6 +60,17 @@ export class ApiError extends Error {
           envelope['message'],
           envelope['details'] ?? null,
           (envelope['request_id'] as string | undefined) ?? requestId,
+        );
+      }
+      if ([502, 503, 504].includes(error.status)) {
+        // No SyncForge error body: the response came from a proxy in front of the API
+        // (in development, the dev server when the API is not running).
+        return new ApiError(
+          error.status,
+          'api_unreachable',
+          'The SyncForge API is not responding. Check that the backend is running on port 8000.',
+          null,
+          requestId,
         );
       }
       return new ApiError(

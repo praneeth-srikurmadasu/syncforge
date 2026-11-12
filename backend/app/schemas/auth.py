@@ -14,7 +14,9 @@ from app.models import OrganizationRole
 
 FullName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 
-PASSWORD_MIN_LENGTH = 12
+# 8 is the minimum of NIST SP 800-63B and OWASP ASVS; no composition rules (any characters,
+# spaces included), so longer passphrases are easy to use.
+PASSWORD_MIN_LENGTH = 8
 # Upper bound stops very long inputs from being used to burn CPU in Argon2.
 PASSWORD_MAX_LENGTH = 128
 

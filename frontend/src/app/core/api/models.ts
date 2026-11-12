@@ -25,6 +25,7 @@ export type Organization = S['OrganizationResponse'];
 export type Member = S['MemberResponse'];
 export type Department = S['DepartmentResponse'];
 export type DepartmentRef = S['DepartmentRef'];
+export type ManagerRef = S['ManagerRef'];
 export type Employee = S['EmployeeResponse'];
 export type EmployeeCreate = S['EmployeeCreate'];
 export type EmployeeUpdate = S['EmployeeUpdate'];

@@ -46,7 +46,10 @@ end a session; the cost is one primary-key lookup per request.
 ## 3. Passwords
 
 - **Argon2id** via `pwdlib` (memory-hard; random salt per hash). Plain passwords are never stored.
-- Length 12-128. The upper bound limits CPU cost per hashing request.
+- Length 8-128, any characters including spaces, no composition rules (NIST SP 800-63B,
+  OWASP ASVS minimum of 8). The upper bound limits CPU cost per hashing request. The
+  registration form shows a strength hint and encourages longer passphrases; checking
+  against breached-password lists is not implemented yet (section 10).
 - Hashes with outdated parameters are transparently upgraded at next successful login.
 - Passwords are Pydantic `SecretStr`: they do not appear in reprs, logs, or validation errors.
 
@@ -246,6 +249,8 @@ lock is removed.
 | Control | Planned phase |
 |---|---|
 | Rate limiting on login/register | Phase 9 |
+| Rejecting known breached or very common passwords at registration (NIST SP 800-63B blocklist check) | Phase 9 |
+| Multi-factor authentication (with password-only sign-in, NIST SP 800-63B-4 recommends 15 or more characters) | Future improvement |
 | Request body size limits | Phase 9 |
 | Audit entries for login, logout and failed logins (not organization-scoped; today in the structured logs only) | Phase 9 |
 | Audit log retention job (the trigger already provides the switch for it) | Future improvement |

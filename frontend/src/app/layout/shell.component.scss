@@ -180,6 +180,34 @@
   display: none;
 }
 
+.search {
+  display: flex;
+  align-items: center;
+  gap: var(--sf-space-2);
+  width: min(360px, 50vw);
+  height: 32px;
+  padding: 0 var(--sf-space-3);
+  border: 1px solid var(--sf-border);
+  border-radius: var(--sf-radius-md);
+  background: var(--sf-bg-sunken);
+  color: var(--sf-text-faint);
+
+  &:focus-within {
+    border-color: var(--sf-accent);
+  }
+
+  input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    outline: none;
+    background: none;
+    color: var(--sf-text);
+    font: inherit;
+    font-size: var(--sf-text-sm);
+  }
+}
+
 .user {
   padding: 0;
   border: none;

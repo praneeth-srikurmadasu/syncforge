@@ -1,0 +1,135 @@
+<sf-dialog
+  [title]="data.mode === 'create' ? 'Add employee' : 'Edit ' + (data.employee?.full_name ?? '')"
+  [description]="
+    data.mode === 'create'
+      ? 'Saving records an employee.created event; active onboarding workflows then provision accounts.'
+      : 'Saving records lifecycle events for what changed; workflows for those events then run.'
+  "
+>
+  @if (error(); as err) {
+    <div
+      class="sf-alert"
+      [class.sf-alert--warning]="err.status === 412"
+      [class.sf-alert--danger]="err.status !== 412"
+      role="alert"
+    >
+      @if (err.status === 412) {
+        <strong>Someone else changed this employee after you opened it.</strong>
+        <span>Your edit was not saved. Load the latest version, then make your change again.</span>
+        <div>
+          <button type="button" class="sf-btn sf-btn--sm" (click)="reloadLatest()">
+            Load latest version
+          </button>
+        </div>
+      } @else {
+        <span>{{ err.message }}</span>
+        @for (issue of extraIssues(); track issue) {
+          <span>{{ issue }}</span>
+        }
+        @if (err.requestId) {
+          <code class="rid">Request {{ err.requestId }}</code>
+        }
+      }
+    </div>
+  }
+
+  <form id="employee-form" class="sf-form-grid" [formGroup]="form" (ngSubmit)="submit()" novalidate>
+    <div class="sf-field">
+      <label for="ef-first">First name</label>
+      <input id="ef-first" class="sf-input" formControlName="first_name" autocomplete="off" />
+      @if (err('first_name'); as m) {
+        <span class="sf-field__error">{{ m }}</span>
+      }
+    </div>
+    <div class="sf-field">
+      <label for="ef-last">Last name</label>
+      <input id="ef-last" class="sf-input" formControlName="last_name" autocomplete="off" />
+      @if (err('last_name'); as m) {
+        <span class="sf-field__error">{{ m }}</span>
+      }
+    </div>
+    <div class="sf-field">
+      <label for="ef-email">Work email</label>
+      <input
+        id="ef-email"
+        class="sf-input"
+        type="email"
+        formControlName="email"
+        autocomplete="off"
+      />
+      @if (err('email'); as m) {
+        <span class="sf-field__error">{{ m }}</span>
+      }
+    </div>
+    <div class="sf-field">
+      <label for="ef-number">Employee number</label>
+      <input
+        id="ef-number"
+        class="sf-input sf-mono"
+        formControlName="employee_number"
+        autocomplete="off"
+      />
+      @if (err('employee_number'); as m) {
+        <span class="sf-field__error">{{ m }}</span>
+      }
+    </div>
+    <div class="sf-field">
+      <label for="ef-dept">Department</label>
+      <select id="ef-dept" class="sf-select" formControlName="department_id">
+        <option value="">No department</option>
+        @for (d of departments.value()?.items ?? []; track d.id) {
+          <option [value]="d.id">{{ d.name }}</option>
+        }
+      </select>
+      @if (departments.error()) {
+        <span class="sf-field__error">Departments could not be loaded.</span>
+      } @else if (err('department_id'); as m) {
+        <span class="sf-field__error">{{ m }}</span>
+      }
+    </div>
+    <div class="sf-field">
+      <label for="ef-designation">Designation</label>
+      <input id="ef-designation" class="sf-input" formControlName="designation" />
+      @if (err('designation'); as m) {
+        <span class="sf-field__error">{{ m }}</span>
+      }
+    </div>
+    <div class="sf-field">
+      <label for="ef-location">Location</label>
+      <input id="ef-location" class="sf-input" formControlName="location" />
+      @if (err('location'); as m) {
+        <span class="sf-field__error">{{ m }}</span>
+      }
+    </div>
+    <div class="sf-field">
+      <label for="ef-joining">Joining date</label>
+      <input id="ef-joining" class="sf-input" type="date" formControlName="joining_date" />
+      @if (err('joining_date'); as m) {
+        <span class="sf-field__error">{{ m }}</span>
+      }
+    </div>
+    <div class="sf-field">
+      <label for="ef-manager">Manager</label>
+      <sf-manager-picker
+        inputId="ef-manager"
+        [(value)]="manager"
+        [excludeId]="data.employee?.id ?? null"
+      />
+    </div>
+    <div class="sf-field">
+      <label for="ef-status">Status</label>
+      <select id="ef-status" class="sf-select" formControlName="employment_status">
+        <option value="active">Active</option>
+        <option value="on_leave">On leave</option>
+      </select>
+      <span class="sf-field__hint">Use Terminate on the employee page to end employment.</span>
+    </div>
+  </form>
+
+  <ng-container footer>
+    <button type="button" class="sf-btn" (click)="close()">Cancel</button>
+    <button type="submit" form="employee-form" class="sf-btn sf-btn--primary" [disabled]="busy()">
+      {{ busy() ? 'Saving…' : data.mode === 'create' ? 'Add employee' : 'Save changes' }}
+    </button>
+  </ng-container>
+</sf-dialog>

@@ -18,6 +18,20 @@ All notable changes to SyncForge are recorded here.
   logout, return to the requested page after a 401, guards for organization membership
   and permissions.
 - Dashboard computed only from existing endpoints, with daily history from the audit log.
+- Workforce screens: employee directory with URL-based filters, add and edit dialogs
+  (changed fields only, `If-Match`, `Idempotency-Key`, recovery from `412`), employee page
+  with reporting line, direct reports, sync events, conflicts and change history,
+  termination and archiving, departments, reporting-lines tree, top-bar employee search.
+- Password fields: show / hide button (accessible label and pressed state), Caps Lock
+  notice, and a length-based strength hint at registration.
+
+#### Changed
+- Minimum password length lowered from 12 to 8 characters (backend `PASSWORD_MIN_LENGTH`,
+  the `create-superadmin` prompt, the registration form, docs/08 and docs/15), at the
+  project owner's request. No composition rules; 128-character maximum unchanged.
+- When the API cannot be reached (connection refused, or a 502/503/504 from the dev-server
+  proxy with no SyncForge error body), screens now say the API is not responding instead
+  of showing "502 Bad Gateway".
 
 ### Phase 7 - Data integrity, conflict resolution and audit logging (complete)
 

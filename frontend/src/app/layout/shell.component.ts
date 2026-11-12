@@ -91,6 +91,14 @@ export class ShellComponent {
     void this.router.navigate(['/o', orgId, 'dashboard']);
   }
 
+  /** Employees are the only searchable entity in the API; the search opens the directory. */
+  protected searchEmployees(event: Event, term: string): void {
+    event.preventDefault();
+    void this.router.navigate(['/o', this.org.orgId(), 'employees'], {
+      queryParams: term.trim() ? { search: term.trim() } : {},
+    });
+  }
+
   protected signOut(): void {
     this.session.logout().subscribe(({ revoked, error }) => {
       this.org.clear();

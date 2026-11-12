@@ -39,6 +39,6 @@ export class EmployeeNameComponent {
   private readonly names = inject(EmployeeNamesService);
   protected readonly org = inject(OrgContextService);
   readonly id = input.required<string>();
-  readonly link = input(false);
+  readonly link = input(true);
   protected readonly entry = computed(() => this.names.get(this.org.orgId(), this.id())());
 }
