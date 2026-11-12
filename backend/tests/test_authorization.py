@@ -62,6 +62,13 @@ ADMIN, MANAGER, VIEWER = (
         (VIEWER, Permission.AUDIT_READ, False),
         (MANAGER, Permission.AUDIT_READ, True),
         (ADMIN, Permission.AUDIT_READ, True),
+        # Phase 7: everyone sees conflicts; managers and admins resolve them; only admins
+        # decide which system is authoritative.
+        (VIEWER, Permission.CONFLICTS_READ, True),
+        (VIEWER, Permission.CONFLICTS_RESOLVE, False),
+        (MANAGER, Permission.CONFLICTS_RESOLVE, True),
+        (MANAGER, Permission.POLICIES_MANAGE, False),
+        (ADMIN, Permission.POLICIES_MANAGE, True),
     ],
 )
 def test_role_permission_matrix(

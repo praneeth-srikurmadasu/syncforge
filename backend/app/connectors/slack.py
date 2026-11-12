@@ -84,6 +84,8 @@ class SlackConnector(Connector):
             first_name=name.get("givenName", ""),
             last_name=name.get("familyName", ""),
             active=bool(body.get("active", True)),
+            department=(body.get(SCIM_ENTERPRISE) or {}).get("department"),
+            designation=body.get("title"),
             raw=body,
         )
 

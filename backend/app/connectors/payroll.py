@@ -68,6 +68,9 @@ class PayrollConnector(Connector):
             first_name=body.get("first_name", ""),
             last_name=body.get("last_name", ""),
             active=body.get("status") == "active",
+            department=body.get("department"),
+            designation=body.get("designation"),
+            location=body.get("location"),
             raw=body,
         )
 

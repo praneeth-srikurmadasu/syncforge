@@ -41,6 +41,11 @@ class ExternalUser:
     first_name: str
     last_name: str
     active: bool
+    # Work attributes as the application reports them; None = this application does not
+    # store the attribute (or left it empty) - reconciliation then does not compare it.
+    department: str | None = None
+    designation: str | None = None
+    location: str | None = None
     raw: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
     def __repr__(self) -> str:

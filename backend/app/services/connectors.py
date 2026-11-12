@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 from app import audit
 from app.connectors import registry
 from app.connectors.base import Connector as ConnectorAdapter
-from app.connectors.base import ConnectorSpec, UserProfile
+from app.connectors.base import ConnectorSpec, ExternalUser, UserProfile
 from app.connectors.errors import ConnectorError
 from app.connectors.http import check_allowed_url
 from app.core.config import Settings, get_settings
@@ -393,6 +393,23 @@ class ConnectorService:
             account_status=account.status,
             latency_ms=latency_ms,
         )
+
+    def read_external_user(self, connector: Connector, external_id: str) -> ExternalUser:
+        """Read one account from the application (reconciliation). Goes through the
+        circuit breaker like every call; raises ConnectorError on failure."""
+        adapter = self._adapter(connector, for_operation=True)
+        breaker = CircuitBreaker(self.session, self.settings)
+        try:
+            breaker.before_call(connector)
+            try:
+                user = adapter.get_user(external_id)
+            except ConnectorError as error:
+                breaker.record(connector, error)
+                raise
+            breaker.record(connector, None)
+            return user
+        finally:
+            adapter.close()
 
     def _save_account(
         self,

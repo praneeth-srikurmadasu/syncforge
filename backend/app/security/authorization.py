@@ -42,6 +42,9 @@ class Permission(enum.StrEnum):
     EVENTS_READ = "events:read"
     EVENTS_REPLAY = "events:replay"  # send dead-lettered events back for processing
     AUDIT_READ = "audit:read"  # read the organization's audit log
+    CONFLICTS_READ = "conflicts:read"  # see data conflicts and source-of-truth policies
+    CONFLICTS_RESOLVE = "conflicts:resolve"  # run reconciliation, resolve conflicts
+    POLICIES_MANAGE = "policies:manage"  # decide which system is authoritative per field
 
 
 _VIEWER = frozenset(
@@ -53,6 +56,7 @@ _VIEWER = frozenset(
         Permission.CONNECTORS_READ,
         Permission.WORKFLOWS_READ,
         Permission.EVENTS_READ,
+        Permission.CONFLICTS_READ,
     }
 )
 
@@ -68,6 +72,7 @@ ROLE_PERMISSIONS: dict[OrganizationRole, frozenset[Permission]] = {
         Permission.WORKFLOWS_MANAGE,
         Permission.EVENTS_REPLAY,
         Permission.AUDIT_READ,
+        Permission.CONFLICTS_RESOLVE,
     },
     OrganizationRole.ORG_ADMIN: frozenset(Permission),
 }

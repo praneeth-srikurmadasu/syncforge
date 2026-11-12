@@ -147,12 +147,21 @@ class GoogleWorkspaceConnector(Connector):
     @staticmethod
     def _to_external(body: dict[str, Any]) -> ExternalUser:
         name = body.get("name") or {}
+        organizations = body.get("organizations") or []
+        organization = next(
+            (o for o in organizations if o.get("primary")),
+            organizations[0] if organizations else {},
+        )
+        locations = body.get("locations") or []
         return ExternalUser(
             external_id=str(body["id"]),
             email=body.get("primaryEmail", ""),
             first_name=name.get("givenName", ""),
             last_name=name.get("familyName", ""),
             active=not body.get("suspended", False),
+            department=organization.get("department"),
+            designation=organization.get("title"),
+            location=locations[0].get("area") if locations else None,
             raw=body,
         )
 
