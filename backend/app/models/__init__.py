@@ -2,6 +2,7 @@
 which Alembic uses to compare models against the database."""
 
 from app.models.audit import ActorType, AuditLog, AuditOutcome
+from app.models.auth_rate import AuthRateWindow
 from app.models.base import Base
 from app.models.circuit import CircuitState, ConnectorCircuit, ConnectorRateWindow
 from app.models.conflict import (
@@ -43,6 +44,7 @@ from app.models.workflow import (
 )
 
 __all__ = [
+    "AuthRateWindow",
     "CONFLICT_FIELDS",
     "ConflictResolution",
     "ConflictSeverity",

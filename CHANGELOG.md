@@ -4,6 +4,27 @@ All notable changes to SyncForge are recorded here.
 
 ## [Unreleased]
 
+### Phase 9 - Security, API versioning, observability and QA (in progress)
+
+#### Added
+- `docs/PHASE_9_PLAN.md`: audit of the starting point, design decisions, milestones and
+  acceptance criteria.
+- Sign-in and registration limits: per client IP and per account (failed logins, unknown
+  emails included), fixed windows in PostgreSQL (`auth_rate_windows`, migration 0013),
+  subjects stored as SHA-256 hashes; `429 rate_limited` with `Retry-After`. Configurable
+  through `AUTH_*` settings.
+- Common-password refusal at registration and in `create-superadmin`: bundled list of the
+  most common passwords (SecLists, MIT), repeated characters, the service name, the email
+  name; reported on the `password` field.
+- Request body limit (`MAX_REQUEST_BODY_BYTES`, default 1 MiB): `413 payload_too_large`.
+- Security headers on every response; `Cache-Control: no-store` and a strict CSP on `/api`.
+
+#### Changed
+- CORS preflight allows `If-Match` and `Idempotency-Key` and exposes `ETag` and
+  `Retry-After`.
+- Registration hint mentions the new password rules; the browser test registers with a
+  refused common password first.
+
 ### Phase 8 - Angular frontend (complete)
 
 #### Added

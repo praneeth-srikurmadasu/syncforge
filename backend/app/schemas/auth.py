@@ -8,9 +8,19 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, SecretStr, StringConstraints
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    SecretStr,
+    StringConstraints,
+    ValidationInfo,
+    field_validator,
+)
 
 from app.models import OrganizationRole
+from app.security.password_policy import password_problem
 
 FullName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 
@@ -25,6 +35,14 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: SecretStr = Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
     full_name: FullName
+
+    @field_validator("password")
+    @classmethod
+    def _password_not_guessable(cls, value: SecretStr, info: ValidationInfo) -> SecretStr:
+        problem = password_problem(value.get_secret_value(), info.data.get("email"))
+        if problem:
+            raise ValueError(problem)
+        return value
 
     model_config = ConfigDict(
         json_schema_extra={

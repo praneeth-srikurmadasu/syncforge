@@ -41,6 +41,7 @@ from app.models import User
 from app.reliability.idempotency import purge_expired
 from app.repositories.users import RevokedTokenRepository, UserRepository
 from app.schemas.auth import PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH
+from app.security.password_policy import password_problem
 from app.security.passwords import hash_password
 from app.seed import SeedError, seed_demo
 
@@ -60,6 +61,9 @@ def create_superadmin(
             raise ValueError(
                 f"Password must be {PASSWORD_MIN_LENGTH}-{PASSWORD_MAX_LENGTH} characters."
             )
+        problem = password_problem(password, email)
+        if problem:
+            raise ValueError(problem)
         user = users.add(
             User(
                 email=email,

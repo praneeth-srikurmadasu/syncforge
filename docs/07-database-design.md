@@ -848,6 +848,17 @@ Indexes: **partial unique** `uq_data_conflicts_open_employee_connector_field` on
 Retention (conflicts, resolutions): kept with the organization; they are the integrity
 history the dashboard shows.
 
+### `auth_rate_windows` - sign-in and registration attempt counters (Phase 9)
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| key | varchar(100) | no | `rule:sha256(subject)` - rule is `login_ip`, `login_failures` or `register_ip`; the subject (IP or normalized email) is stored only as a hash |
+| window_start | timestamptz | no | Start of the fixed window; composite PK with `key`; indexed for cleanup |
+| hits | int | no | `CHECK (hits >= 0)`; incremented atomically (`INSERT ... ON CONFLICT DO UPDATE ... RETURNING`) |
+
+Not organization-scoped (sign-in happens before an organization is chosen). Rows older
+than a day are deleted as new ones are written. Details: docs/15 section 4a.
+
 ## 4. Migration strategy
 
 - Every schema change is an **Alembic migration** in `backend/migrations/versions/`,

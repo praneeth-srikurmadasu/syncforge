@@ -48,8 +48,14 @@ end a session; the cost is one primary-key lookup per request.
 - **Argon2id** via `pwdlib` (memory-hard; random salt per hash). Plain passwords are never stored.
 - Length 8-128, any characters including spaces, no composition rules (NIST SP 800-63B,
   OWASP ASVS minimum of 8). The upper bound limits CPU cost per hashing request. The
-  registration form shows a strength hint and encourages longer passphrases; checking
-  against breached-password lists is not implemented yet (section 10).
+  registration form shows a strength hint and encourages longer passphrases.
+- **Guessable passwords are refused** (NIST SP 800-63B blocklist check), offline:
+  `app/security/password_policy.py` checks the bundled list of the 10,000 most common
+  passwords (SecLists, MIT licence; only its 2,087 entries of 8+ characters are needed),
+  a single repeated character, the service name, and the email's name. Registration
+  returns `422` on the `password` field with the reason; `create-superadmin` applies the
+  same check. Nothing is sent to a third-party breach service; the trade-off is a smaller
+  list than a full breach corpus.
 - Hashes with outdated parameters are transparently upgraded at next successful login.
 - Passwords are Pydantic `SecretStr`: they do not appear in reprs, logs, or validation errors.
 
@@ -58,7 +64,33 @@ end a session; the cost is one primary-key lookup per request.
 | Endpoint | Defence |
 |---|---|
 | Login | One message and code for unknown email, wrong password and inactive account; unknown emails still pay the cost of a hash verification. |
-| Register | **Accepted trade-off:** `409 email_taken` reveals that an email is registered. This is normal for self-service sign-up; it will be mitigated by rate limiting (Phase 9). |
+| Register | **Accepted trade-off:** `409 email_taken` reveals that an email is registered. This is normal for self-service sign-up; registrations are limited per client IP (section 4a), which makes bulk discovery slow. |
+| Login rate limits | The per-account limit counts unknown emails exactly like real ones, so a 429 reveals nothing either. |
+
+## 4a. Rate limiting of sign-in and registration
+
+`app/security/rate_limit.py`, counters in PostgreSQL (`auth_rate_windows`, migration 0013).
+
+| Rule | Subject | Counts | Default | Setting |
+|---|---|---|---|---|
+| `login_ip` | client IP | every login attempt | 60 / 60 s | `AUTH_LOGIN_IP_LIMIT`, `AUTH_LOGIN_IP_WINDOW_SECONDS` |
+| `login_failures` | normalized email | failed logins (unknown emails too) | 10 / 15 min | `AUTH_LOGIN_FAILURES_LIMIT`, `AUTH_LOGIN_FAILURES_WINDOW_SECONDS` |
+| `register_ip` | client IP | registrations | 50 / hour | `AUTH_REGISTER_IP_LIMIT`, `AUTH_REGISTER_IP_WINDOW_SECONDS` |
+
+- Checked **before** any password hashing, so refused attempts are cheap.
+- Refusal: `429 rate_limited`, `Retry-After` and `details.retry_after_seconds`; the UI shows
+  the API's message ("Try again in 7 minutes").
+- **PostgreSQL, not Redis:** signing in must not depend on the message broker; every API
+  process shares the counters. Cost: one small upsert per attempt.
+- **Hashed subjects:** keys are `rule:sha256(subject)`; the table holds no IP addresses or
+  emails. Rows older than a day are deleted as new ones are written.
+- **Client IP:** the ASGI client address. Behind a reverse proxy, run Uvicorn with
+  `--proxy-headers --forwarded-allow-ips=<proxy address>`; `X-Forwarded-For` from anyone
+  else is ignored. Without that, every user would share the proxy's address.
+- **Trade-offs:** fixed windows allow up to twice a limit across a boundary. The
+  per-account rule lets someone who knows an email delay that user's sign-in until the
+  window ends; the window is short and every refusal is logged (`login rate limited`).
+- Tests: `tests/test_security_hardening.py`.
 
 ## 5. Secrets and configuration
 
@@ -135,6 +167,18 @@ Details: [connector framework, sections 5 and 7](10-connector-framework.md#5-the
 - CORS allows only configured origins (`CORS_ORIGINS`, default `http://localhost:4200`
   for the future Angular app), with `allow_credentials=False` because tokens travel in
   the `Authorization` header, not cookies.
+- Preflight allows the headers the API uses (`Authorization`, `Content-Type`,
+  `X-Request-ID`, `If-Match`, `Idempotency-Key`) and exposes `X-Request-ID`, `ETag` and
+  `Retry-After`. (The Angular app is served from the same origin through a proxy, so it
+  does not depend on CORS.)
+- Response headers on every response: `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`. On `/api/*` also
+  `Cache-Control: no-store` (responses contain personal data) and
+  `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` (JSON never needs
+  to load anything). `/docs` is excluded from the CSP because Swagger UI loads scripts.
+- Request bodies are limited to `MAX_REQUEST_BODY_BYTES` (default 1 MiB): a larger
+  `Content-Length` gets `413 payload_too_large` before the body is read; a chunked body is
+  counted while it streams and refused when it passes the limit.
 - TLS termination is a deployment concern (documented in the Phase 10 deployment guide).
 
 ## 9. Authorization model
@@ -248,10 +292,7 @@ lock is removed.
 
 | Control | Planned phase |
 |---|---|
-| Rate limiting on login/register | Phase 9 |
-| Rejecting known breached or very common passwords at registration (NIST SP 800-63B blocklist check) | Phase 9 |
 | Multi-factor authentication (with password-only sign-in, NIST SP 800-63B-4 recommends 15 or more characters) | Future improvement |
-| Request body size limits | Phase 9 |
 | Audit entries for login, logout and failed logins (not organization-scoped; today in the structured logs only) | Phase 9 |
 | Audit log retention job (the trigger already provides the switch for it) | Future improvement |
 | Field-level masking of employee personal data for low-privilege roles | Future improvement |

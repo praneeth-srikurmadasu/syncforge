@@ -1,6 +1,6 @@
 # SyncForge - Project Status
 
-**Current phase:** 8 complete - Angular frontend (report: `docs/PHASE_8_FRONTEND_REPORT.md`). Next: Phase 9, awaiting approval.
+**Current phase:** 9 in progress - security, API versioning, observability, QA (plan: `docs/PHASE_9_PLAN.md`). Milestones 1-2 delivered.
 **Last updated:** 2026-11-12
 
 | Phase | Status |
@@ -13,7 +13,25 @@
 | 6 - Reliability engine and failure recovery | Complete |
 | 7 - Data integrity, conflicts, audit logging | Complete |
 | 8 - Angular frontend | Complete |
-| 9-10 | Not started |
+| 9 - Security, versioning, observability, QA | In progress (milestones 1-2 of 7) |
+| 10 | Not started |
+
+## Phase 9 progress
+
+| Milestone | Scope | Status |
+|---|---|---|
+| 1 | Audit and plan (`docs/PHASE_9_PLAN.md`) | Done |
+| 2 | Sign-in and registration rate limits (PostgreSQL fixed windows, hashed subjects, 429 with Retry-After), common-password refusal (registration and CLI), 1 MiB request body limit (413), security headers, CORS headers for `If-Match` / `Idempotency-Key`; UI shows the reasons | Done |
+| 3 | Security events (sign-in audit) | Next |
+| 4-7 | Observability, `/api/v2`, performance, QA | Planned |
+
+### Phase 9 verification (actual results)
+- Milestone 2, Linux workspace: backend `ruff check` / `ruff format --check` clean,
+  `python -m pytest` **547 passed** (20 new in `tests/test_security_hardening.py`; the
+  migration sync and round-trip tests include 0013); frontend lint clean; `npm run e2e`
+  **13 passed** (the registration test now also checks that `password1` is refused). In
+  headless Chrome, 11 wrong passwords for one email showed "Too many failed sign-in
+  attempts for this account. Try again in 7 minutes." with the request ID.
 
 ## Phase 8 progress
 
@@ -441,9 +459,9 @@ Plan, screen-to-endpoint map and unsupported features: `docs/PHASE_8_FRONTEND_PL
 - Termination is final; rehiring means creating a new employee record.
 - Free-text employee search is a substring scan within one organization (no trigram index).
 - Members can only be added if they already registered (no email invitations yet).
-- No rate limiting on login/register yet - Phase 9.
-- Passwords: minimum 8 characters, no breached-password check and no MFA yet (docs/15
-  section 10); NIST SP 800-63B-4 recommends 15+ characters when a password is the only factor.
+- Passwords: minimum 8 characters and a common-password check (bundled list of 2,087
+  entries, not a full breach corpus); no MFA yet. NIST SP 800-63B-4 recommends 15+
+  characters when a password is the only factor.
 - No refresh tokens: users log in again after 30 minutes.
 - One unidentified intermittent test failure seen once at the end of Phase 5 (Linux
   workspace, 1 of 15 full runs, test name not captured). It has not reappeared in any

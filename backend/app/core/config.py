@@ -48,6 +48,18 @@ class Settings(BaseSettings):
     jwt_audience: str = "syncforge-api"
     access_token_expire_minutes: int = Field(default=30, ge=1, le=24 * 60)
 
+    # ---- Abuse protection ---------------------------------------------------------
+    # Fixed windows counted in PostgreSQL (app/security/rate_limit.py). Login attempts per
+    # client IP, failed logins per account (normalized email), registrations per client IP.
+    auth_login_ip_limit: int = Field(default=60, ge=1)
+    auth_login_ip_window_seconds: int = Field(default=60, ge=1)
+    auth_login_failures_limit: int = Field(default=10, ge=1)
+    auth_login_failures_window_seconds: int = Field(default=900, ge=1)
+    auth_register_ip_limit: int = Field(default=50, ge=1)
+    auth_register_ip_window_seconds: int = Field(default=3600, ge=1)
+    # Largest request body accepted; larger requests get 413 before any handler runs.
+    max_request_body_bytes: int = Field(default=1_048_576, ge=1024)
+
     # ---- Connectors (external applications) -------------------------------------
     # Fernet key(s) that encrypt connector credentials at rest. Comma-separated to
     # rotate keys: the first key encrypts, every key can decrypt.

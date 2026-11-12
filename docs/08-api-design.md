@@ -37,6 +37,8 @@
 | 404 | `user_not_found` | Adding a member: no active user has that email |
 | 404 | `member_not_found` | The user is not a member of this organization |
 | 405 | `method_not_allowed` | Wrong HTTP method |
+| 413 | `payload_too_large` | Request body over `MAX_REQUEST_BODY_BYTES` (default 1 MiB); refused before the handler runs |
+| 429 | `rate_limited` | Too many sign-in or registration attempts; `Retry-After` header and `details.retry_after_seconds` say how long to wait |
 | 409 | `email_taken` | Registration with an existing email (case-insensitive) |
 | 409 | `slug_taken` | Organization slug already in use |
 | 409 | `already_member` | User is already a member of the organization |
@@ -119,7 +121,7 @@ Request:
 | Field | Rules |
 |---|---|
 | email | valid email; normalised to lowercase |
-| password | 8-128 characters, any characters (no composition rules) |
+| password | 8-128 characters, any characters (no composition rules); refused if it is on the bundled list of common passwords, is one repeated character, contains "syncforge", or contains the email's name (4+ characters) |
 | full_name | 1-200 characters after trimming whitespace |
 
 `201`:
@@ -127,7 +129,10 @@ Request:
 {"id": "9728de53-...", "email": "ada@acme.example", "full_name": "Ada Lovelace",
  "is_active": true, "is_superadmin": false, "created_at": "2026-11-11T12:41:04.146404Z"}
 ```
-Errors: `409 email_taken`, `422 validation_error`.
+Errors: `409 email_taken`, `422 validation_error` (a refused password is reported on the
+`password` field with the reason, never the value), `429 rate_limited` (more than
+`AUTH_REGISTER_IP_LIMIT` registrations from one client IP per `AUTH_REGISTER_IP_WINDOW_SECONDS`;
+defaults 50 per hour).
 Idempotency: not idempotent - a repeat returns `409`.
 
 ### `POST /api/v1/auth/login`
@@ -138,7 +143,17 @@ Request: `{"email": "ada@acme.example", "password": "correct-horse-battery"}`
 `200`: `{"access_token": "eyJ...", "token_type": "bearer", "expires_in": 1800}`
 
 Errors: `401 invalid_credentials` - identical for unknown email, wrong password and
-inactive account. `422 validation_error`.
+inactive account. `422 validation_error`. `429 rate_limited` with `Retry-After` when either
+limit is reached:
+
+| Limit | Counts | Default |
+|---|---|---|
+| Per client IP | every login attempt | 60 per 60 s |
+| Per account (normalized email) | failed attempts, also for unknown emails | 10 per 15 min |
+
+While the per-account limit is reached, even the correct password is refused, so guessing
+cannot continue. Windows are fixed (aligned to the clock), so `Retry-After` is the time to
+the end of the current window.
 
 ### `GET /api/v1/auth/me`
 Auth: bearer token.

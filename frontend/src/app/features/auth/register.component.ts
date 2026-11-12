@@ -89,7 +89,10 @@ type Field = 'full_name' | 'email' | 'password' | 'confirm';
           <span class="sf-field__error">{{ m }}</span>
         } @else {
           <div class="sf-field__hint strength" id="password-hint" aria-live="polite">
-            <span>At least 8 characters. A longer passphrase is stronger than symbols.</span>
+            <span
+              >At least 8 characters, not a common password and not your email name. A longer
+              passphrase is stronger than symbols.</span
+            >
             @if (password()) {
               <span class="meter" [attr.data-level]="strength()">
                 <span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>

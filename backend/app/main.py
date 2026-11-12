@@ -13,7 +13,7 @@ from app.api.v1 import api_router
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
-from app.core.middleware import RequestContextMiddleware
+from app.core.middleware import BodySizeLimitMiddleware, RequestContextMiddleware
 
 
 def create_app() -> FastAPI:
@@ -26,16 +26,23 @@ def create_app() -> FastAPI:
         description="Workforce integration and synchronization platform.",
     )
 
-    # Middleware added last runs first: RequestContextMiddleware wraps CORS, so
-    # even CORS preflight responses carry a request ID.
+    # Middleware added last runs first: RequestContextMiddleware wraps the body limit and
+    # CORS, so even refused and preflight responses carry a request ID and the headers.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=False,  # JWTs travel in the Authorization header, not cookies
         allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
-        expose_headers=["X-Request-ID"],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "X-Request-ID",
+            "If-Match",
+            "Idempotency-Key",
+        ],
+        expose_headers=["X-Request-ID", "ETag", "Retry-After"],
     )
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes)
     app.add_middleware(RequestContextMiddleware)
 
     register_exception_handlers(app)

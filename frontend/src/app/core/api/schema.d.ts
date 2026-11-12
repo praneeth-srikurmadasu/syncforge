@@ -16,6 +16,9 @@ export interface paths {
         /**
          * Login
          * @description Exchange email and password for a bearer access token.
+         *
+         *     Attempts are limited per client IP and failed attempts per account (429 with
+         *     Retry-After).
          */
         post: operations["login_api_v1_auth_login_post"];
         delete?: never;
@@ -76,6 +79,9 @@ export interface paths {
         /**
          * Register
          * @description Create a platform user account. The new user belongs to no organization yet.
+         *
+         *     Passwords on the list of common passwords, or containing the email name, are refused
+         *     (422).
          */
         post: operations["register_api_v1_auth_register_post"];
         delete?: never;
@@ -2423,6 +2429,13 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Too many attempts; wait for the number of seconds in Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     logout_api_v1_auth_logout_post: {
@@ -2514,6 +2527,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Too many attempts; wait for the number of seconds in Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -1,12 +1,18 @@
 import { expect, test } from '@playwright/test';
 import { PASSWORD, newTenant, signIn, unique } from '../support/stack';
 
-test('register with an 8-character password, reveal it, land on onboarding', async ({ page }) => {
+test('register: a common password is refused, an 8-character one is accepted', async ({ page }) => {
   await page.goto('/register');
   await page.getByLabel('Full name').fill('Grace Hopper');
   await page.getByLabel('Work email').fill(`${unique('reg')}@example.com`);
-  await page.getByLabel('Password', { exact: true }).fill('abcd1234');
-  await page.getByLabel('Confirm password').fill('abcd1234');
+  // A common password is refused by the API, with the reason on the field.
+  await page.getByLabel('Password', { exact: true }).fill('password1');
+  await page.getByLabel('Confirm password').fill('password1');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page.getByText('This password is too common')).toBeVisible();
+
+  await page.getByLabel('Password', { exact: true }).fill('tulip-48');
+  await page.getByLabel('Confirm password').fill('tulip-48');
   await page.getByRole('button', { name: 'Show password' }).first().click();
   await expect(page.getByLabel('Password', { exact: true })).toHaveAttribute('type', 'text');
   await page.getByRole('button', { name: 'Create account' }).click();

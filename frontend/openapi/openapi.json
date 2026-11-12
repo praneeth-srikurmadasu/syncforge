@@ -3824,7 +3824,7 @@
   "paths": {
     "/api/v1/auth/login": {
       "post": {
-        "description": "Exchange email and password for a bearer access token.",
+        "description": "Exchange email and password for a bearer access token.\n\nAttempts are limited per client IP and failed attempts per account (429 with\nRetry-After).",
         "operationId": "login_api_v1_auth_login_post",
         "requestBody": {
           "content": {
@@ -3859,6 +3859,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "description": "Too many attempts; wait for the number of seconds in Retry-After"
           }
         },
         "summary": "Login",
@@ -3922,7 +3925,7 @@
     },
     "/api/v1/auth/register": {
       "post": {
-        "description": "Create a platform user account. The new user belongs to no organization yet.",
+        "description": "Create a platform user account. The new user belongs to no organization yet.\n\nPasswords on the list of common passwords, or containing the email name, are refused\n(422).",
         "operationId": "register_api_v1_auth_register_post",
         "requestBody": {
           "content": {
@@ -3957,6 +3960,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "description": "Too many attempts; wait for the number of seconds in Retry-After"
           }
         },
         "summary": "Register",
