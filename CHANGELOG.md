@@ -31,6 +31,8 @@ All notable changes to SyncForge are recorded here.
 - Workflow screens: list, step builder (create and edit, new version on change),
   workflow page with activation and execution history.
 - Reliability overview and dead-letter queue with entry pages and replay.
+- Collapsible sidebar: an icons-only rail on wide screens (labels as tooltips), remembered
+  in the browser; on narrow screens the sidebar stays a slide-in drawer.
 - Password fields: show / hide button (accessible label and pressed state), Caps Lock
   notice, and a length-based strength hint at registration.
 

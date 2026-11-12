@@ -152,6 +152,72 @@
   }
 }
 
+.collapse-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  margin-top: auto;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--sf-radius-md);
+  background: none;
+  color: var(--sf-text-faint);
+  font: inherit;
+  font-size: var(--sf-text-sm);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--sf-surface-hover);
+    color: var(--sf-text);
+  }
+}
+
+// Icons-only rail on wide screens. The width variable also moves the sidebar background.
+@media (min-width: 901px) {
+  .frame.collapsed {
+    --sf-sidebar-width: 64px;
+
+    .sidebar {
+      align-items: center;
+      padding: var(--sf-space-3) var(--sf-space-2);
+    }
+
+    .text,
+    .org-text,
+    .nav-label {
+      display: none;
+    }
+
+    .brand {
+      padding: 6px 0 2px;
+    }
+
+    .org-switch {
+      justify-content: center;
+      width: auto;
+      padding: 6px;
+    }
+
+    .nav-group {
+      align-items: center;
+      padding-top: var(--sf-space-2);
+      border-top: 1px solid var(--sf-border);
+    }
+
+    .nav-group:first-child {
+      border-top: none;
+    }
+
+    .nav-item,
+    .collapse-btn {
+      justify-content: center;
+      width: 40px;
+      padding: 0;
+    }
+  }
+}
+
 .scrim {
   display: none;
 }
@@ -243,66 +309,6 @@ main {
   outline: none;
 }
 
-.menu {
-  min-width: 220px;
-  padding: 4px;
-  border-radius: var(--sf-radius-md);
-  background: var(--sf-surface-raised);
-  box-shadow: var(--sf-shadow-overlay);
-}
-
-.menu-label {
-  padding: 6px 8px 4px;
-  font-size: var(--sf-text-xs);
-  color: var(--sf-text-faint);
-}
-
-.menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 7px 8px;
-  border: none;
-  border-radius: var(--sf-radius-sm);
-  background: none;
-  color: var(--sf-text);
-  font: inherit;
-  font-size: var(--sf-text-sm);
-  text-align: left;
-  cursor: pointer;
-
-  &:hover,
-  &:focus-visible {
-    background: var(--sf-surface-hover);
-    text-decoration: none;
-    box-shadow: none;
-  }
-
-  &.current {
-    cursor: default;
-    opacity: 1;
-    color: var(--sf-text);
-  }
-}
-
-.menu-pad {
-  width: 14px;
-}
-
-.menu-sep {
-  height: 1px;
-  margin: 4px 0;
-  background: var(--sf-border);
-}
-
-.menu-user {
-  display: flex;
-  flex-direction: column;
-  padding: 8px;
-  font-size: var(--sf-text-sm);
-}
-
 @media (max-width: 900px) {
   .frame {
     grid-template-columns: minmax(0, 1fr);
@@ -333,5 +339,10 @@ main {
 
   .menu-btn {
     display: inline-flex;
+  }
+
+  // On small screens the sidebar is a drawer; the collapsed rail does not apply.
+  .collapse-btn {
+    display: none;
   }
 }

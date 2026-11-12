@@ -1,9 +1,9 @@
 <a class="skip" href="#sf-main">Skip to content</a>
-<div class="frame" [class.nav-open]="navOpen()">
+<div class="frame" [class.nav-open]="navOpen()" [class.collapsed]="collapsed()">
   <aside class="sidebar" aria-label="Main navigation">
     <div class="brand">
       <sf-brand-mark />
-      <span>SyncForge</span>
+      <span class="text">SyncForge</span>
     </div>
 
     <button
@@ -11,13 +11,14 @@
       class="org-switch"
       [cdkMenuTriggerFor]="orgMenu"
       aria-label="Switch organization"
+      [attr.title]="collapsed() ? org.organization()?.name : null"
     >
       <span class="org-avatar">{{ (org.organization()?.name ?? '?').charAt(0) }}</span>
       <span class="org-text">
         <span class="org-name">{{ org.organization()?.name }}</span>
         <span class="org-role">{{ roleLabel() }}</span>
       </span>
-      <sf-icon name="chevron-down" [size]="14" />
+      <sf-icon class="text" name="chevron-down" [size]="14" />
     </button>
 
     <ng-template #orgMenu>
@@ -54,14 +55,28 @@
               routerLinkActive="active"
               [routerLinkActiveOptions]="{ exact: false }"
               ariaCurrentWhenActive="page"
+              [attr.title]="collapsed() ? item.label : null"
+              [attr.aria-label]="collapsed() ? item.label : null"
             >
               <sf-icon [name]="item.icon" />
-              {{ item.label }}
+              <span class="text">{{ item.label }}</span>
             </a>
           }
         </div>
       }
     </nav>
+
+    <button
+      type="button"
+      class="collapse-btn"
+      [attr.aria-label]="collapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
+      [attr.aria-expanded]="!collapsed()"
+      [attr.title]="collapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
+      (click)="toggleCollapsed()"
+    >
+      <sf-icon [name]="collapsed() ? 'panel-open' : 'panel-close'" />
+      <span class="text">Collapse</span>
+    </button>
   </aside>
   <button
     type="button"

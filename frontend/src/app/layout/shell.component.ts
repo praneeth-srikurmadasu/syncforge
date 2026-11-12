@@ -21,6 +21,15 @@ import { BrandMarkComponent } from './brand-mark.component';
 import { NAV } from './nav';
 
 const EXPIRY_WARNING_MS = 3 * 60 * 1000;
+const COLLAPSED_KEY = 'sf.sidebarCollapsed';
+
+function readCollapsed(): boolean {
+  try {
+    return localStorage.getItem(COLLAPSED_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
 
 /** Application frame for an organization: sidebar, top bar, session notices, content. */
 @Component({
@@ -47,6 +56,8 @@ export class ShellComponent {
   private readonly router = inject(Router);
 
   protected readonly navOpen = signal(false);
+  /** Desktop only: icons-only sidebar, remembered in this browser. */
+  protected readonly collapsed = signal(readCollapsed());
   protected readonly now = signal(Date.now());
 
   protected readonly nav = computed(() => {
@@ -89,6 +100,16 @@ export class ShellComponent {
 
   protected switchTo(orgId: string): void {
     void this.router.navigate(['/o', orgId, 'dashboard']);
+  }
+
+  protected toggleCollapsed(): void {
+    const next = !this.collapsed();
+    this.collapsed.set(next);
+    try {
+      localStorage.setItem(COLLAPSED_KEY, String(next));
+    } catch {
+      // not essential
+    }
   }
 
   /** Employees are the only searchable entity in the API; the search opens the directory. */

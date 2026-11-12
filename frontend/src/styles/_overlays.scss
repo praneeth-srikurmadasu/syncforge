@@ -31,3 +31,64 @@
     opacity: 0;
   }
 }
+
+// Dropdown menus (CDK menu) used by the application shell.
+.menu {
+  min-width: 220px;
+  padding: 4px;
+  border-radius: var(--sf-radius-md);
+  background: var(--sf-surface-raised);
+  box-shadow: var(--sf-shadow-overlay);
+}
+
+.menu-label {
+  padding: 6px 8px 4px;
+  font-size: var(--sf-text-xs);
+  color: var(--sf-text-faint);
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  border-radius: var(--sf-radius-sm);
+  background: none;
+  color: var(--sf-text);
+  font: inherit;
+  font-size: var(--sf-text-sm);
+  text-align: left;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    background: var(--sf-surface-hover);
+    text-decoration: none;
+    box-shadow: none;
+  }
+
+  &.current {
+    cursor: default;
+    opacity: 1;
+    color: var(--sf-text);
+  }
+}
+
+.menu-pad {
+  width: 14px;
+}
+
+.menu-sep {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--sf-border);
+}
+
+.menu-user {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  font-size: var(--sf-text-sm);
+}
