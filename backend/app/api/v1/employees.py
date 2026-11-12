@@ -9,11 +9,15 @@ import uuid
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, Query, Response, status
+from fastapi import APIRouter, Body, Depends, Header, Query, Response, status
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import DbSession, require_org_permission
-from app.core.errors import UnprocessableError
-from app.models import EmploymentStatus
+from app.core.config import get_settings
+from app.core.errors import ConflictError, UnprocessableError
+from app.models import Employee, EmploymentStatus
+from app.reliability.idempotency import REPLAY_HEADER, IdempotencyStore, StoredResponse
 from app.repositories.employees import EmployeeFilters, EmployeeRepository, EmployeeSort
 from app.schemas.common import Limit, Offset, Page
 from app.schemas.employees import (
@@ -91,18 +95,70 @@ def list_employees(
     )
 
 
+IdempotencyKey = Annotated[
+    str | None,
+    Header(
+        alias="Idempotency-Key",
+        min_length=1,
+        max_length=255,
+        pattern=r"^[\x21-\x7e]+$",  # printable ASCII, no spaces
+        description="Optional. Send a unique value (e.g. a UUID) to make retries safe: a "
+        "repeat of the same request with the same key returns the first response "
+        "(header `Idempotent-Replayed: true`) instead of creating a second employee. "
+        "Stored for IDEMPOTENCY_TTL_HOURS (default 24).",
+    ),
+]
+
+
 @router.post(
     "",
     response_model=EmployeeResponse,
     status_code=status.HTTP_201_CREATED,
-    responses=_WRITE_ERRORS,
+    responses=_WRITE_ERRORS
+    | {422: {"description": "Invalid data, or `idempotency_key_reused` for a different request"}},
 )
 def create_employee(
-    payload: EmployeeCreate, access: CanWriteEmployees, db: DbSession
-) -> EmployeeResponse:
-    """Create an employee. Emits `employee.created`."""
-    employee = EmployeeService(db).create(access.organization, payload)
+    payload: EmployeeCreate,
+    access: CanWriteEmployees,
+    db: DbSession,
+    idempotency_key: IdempotencyKey = None,
+) -> EmployeeResponse | JSONResponse:
+    """Create an employee. Emits `employee.created`. Supports `Idempotency-Key`."""
+    service = EmployeeService(db)
+    if idempotency_key is None:
+        return EmployeeResponse.model_validate(service.create(access.organization, payload))
+
+    store = IdempotencyStore(
+        db,
+        organization_id=access.organization.id,
+        user_id=access.user.id,
+        key=idempotency_key,
+        endpoint="POST /employees",
+        body=payload.model_dump(mode="json"),
+        ttl_hours=get_settings().idempotency_ttl_hours,
+    )
+    stored = store.lookup()
+    if stored is not None:
+        return _replay(stored)
+
+    def remember(employee: Employee) -> None:
+        body = EmployeeResponse.model_validate(employee).model_dump(mode="json")
+        store.stage(status.HTTP_201_CREATED, body, employee.id)
+
+    try:
+        employee = service.create(access.organization, payload, before_commit=remember)
+    except (ConflictError, IntegrityError):
+        stored = store.after_conflict()  # an identical concurrent request won the race
+        if stored is not None:
+            return _replay(stored)
+        raise
     return EmployeeResponse.model_validate(employee)
+
+
+def _replay(stored: StoredResponse) -> JSONResponse:
+    return JSONResponse(
+        stored.body, status_code=stored.status_code, headers={REPLAY_HEADER: "true"}
+    )
 
 
 @router.get("/{employee_id}", response_model=EmployeeResponse, responses=_ERRORS)

@@ -12,6 +12,7 @@ from app.models.connector import (
 from app.models.dead_letter import DeadLetterEvent, DeadLetterReason, DeadLetterStatus
 from app.models.employee import Department, Employee, EmploymentStatus
 from app.models.event import IntegrationEvent, IntegrationEventStatus, OutboxEvent
+from app.models.idempotency import IdempotencyRecord
 from app.models.organization import Organization, OrganizationMembership, OrganizationRole
 from app.models.revoked_token import RevokedToken
 from app.models.user import User
@@ -44,6 +45,7 @@ __all__ = [
     "ExecutionStatus",
     "ExternalAccount",
     "ExternalAccountStatus",
+    "IdempotencyRecord",
     "IntegrationEvent",
     "IntegrationEventStatus",
     "JobStatus",

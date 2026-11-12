@@ -86,6 +86,13 @@ class ConnectorSpec:
         return int(self.version.split(".", 1)[0])
 
 
+IDEMPOTENCY_HEADER = "Idempotency-Key"
+
+
+def idempotency_headers(key: str | None) -> dict[str, str]:
+    return {IDEMPOTENCY_HEADER: key} if key else {}
+
+
 class Connector(ABC):
     spec: ClassVar[ConnectorSpec]
 
@@ -105,7 +112,12 @@ class Connector(ABC):
         """Prove the credentials work with a cheap, read-only call."""
 
     @abstractmethod
-    def create_user(self, profile: UserProfile) -> ExternalUser: ...
+    def create_user(
+        self, profile: UserProfile, *, idempotency_key: str | None = None
+    ) -> ExternalUser:
+        """Create the user. `idempotency_key` is the same for every attempt of the same
+        synchronization job, so an API that honours `Idempotency-Key` creates it once
+        even if an attempt timed out after the API had already acted (docs/13)."""
 
     @abstractmethod
     def update_user(self, external_id: str, profile: UserProfile) -> ExternalUser: ...

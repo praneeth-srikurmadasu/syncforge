@@ -21,6 +21,8 @@ import httpx2 as httpx
 # job for days.
 MAX_RETRY_AFTER_SECONDS = 3600.0
 _MAX_MESSAGE_LENGTH = 300
+# Error an idempotency-aware API returns while a request with the same key is running.
+IDEMPOTENCY_KEY_IN_USE = "idempotency_key_in_use"
 
 
 class ErrorCategory(enum.StrEnum):
@@ -33,6 +35,9 @@ class ErrorCategory(enum.StrEnum):
     TIMEOUT = "timeout"  # no response in time
     NETWORK = "network"  # connection refused, DNS failure, connection reset
     SERVER = "server"  # 5xx: the external application is failing
+    # 409 "idempotency_key_in_use": an earlier attempt with the same idempotency key is
+    # still being executed (e.g. it timed out on our side). Retry later to get its result.
+    IN_PROGRESS = "in_progress"
     PERMANENT = "permanent"  # any other 4xx: will not succeed by retrying
     CONFIGURATION = "configuration"  # our side: bad config, disallowed host, old version
 
@@ -43,6 +48,7 @@ RETRYABLE_CATEGORIES = frozenset(
         ErrorCategory.TIMEOUT,
         ErrorCategory.NETWORK,
         ErrorCategory.SERVER,
+        ErrorCategory.IN_PROGRESS,
     }
 )
 
@@ -136,10 +142,14 @@ def error_from_response(response: httpx.Response) -> ConnectorError:
     retry_after = None
     if status in (429, 503):
         retry_after = parse_retry_after(response.headers.get("Retry-After"))
+    message = _external_message(response)
+    code = f"http_{status}"
+    if status == 409 and message == IDEMPOTENCY_KEY_IN_USE:
+        category, code = ErrorCategory.IN_PROGRESS, IDEMPOTENCY_KEY_IN_USE
     return ConnectorError(
         category=category,
-        message=_external_message(response),
-        code=f"http_{status}",
+        message=message,
+        code=code,
         status_code=status,
         retry_after=retry_after,
     )

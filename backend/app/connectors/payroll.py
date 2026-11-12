@@ -17,6 +17,7 @@ from app.connectors.base import (
     ConnectorSpec,
     ExternalUser,
     UserProfile,
+    idempotency_headers,
 )
 from app.connectors.registry import register
 
@@ -76,13 +77,16 @@ class PayrollConnector(Connector):
             ok=True, latency_ms=self.http.last_latency_ms, detail="Payroll API reachable."
         )
 
-    def create_user(self, profile: UserProfile) -> ExternalUser:
+    def create_user(
+        self, profile: UserProfile, *, idempotency_key: str | None = None
+    ) -> ExternalUser:
         body = {
             "employee_number": profile.employee_number,
             "status": "active" if profile.active else "inactive",
             **self._attributes(profile),
         }
-        response = self.http.request("POST", "/v1/employees", json=body, headers=self._headers())
+        headers = {**self._headers(), **idempotency_headers(idempotency_key)}
+        response = self.http.request("POST", "/v1/employees", json=body, headers=headers)
         return self._to_external(response.json())
 
     def update_user(self, external_id: str, profile: UserProfile) -> ExternalUser:

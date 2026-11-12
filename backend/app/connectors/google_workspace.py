@@ -27,6 +27,7 @@ from app.connectors.base import (
     ConnectorSpec,
     ExternalUser,
     UserProfile,
+    idempotency_headers,
 )
 from app.connectors.errors import ConnectorError, ErrorCategory
 from app.connectors.registry import register
@@ -113,10 +114,15 @@ class GoogleWorkspaceConnector(Connector):
             _token_cache[key] = (token, expires_at)
         return token
 
-    def _call(self, method: str, path: str, **kwargs: Any) -> Any:
+    def _call(
+        self, method: str, path: str, *, extra_headers: dict[str, str] | None = None, **kwargs: Any
+    ) -> Any:
         """Call the API; on 401, get a fresh token and retry exactly once."""
         for attempt in (1, 2):
-            headers = {"Authorization": f"Bearer {self._access_token(refresh=attempt == 2)}"}
+            headers = {
+                "Authorization": f"Bearer {self._access_token(refresh=attempt == 2)}",
+                **(extra_headers or {}),
+            }
             try:
                 return self.http.request(method, path, headers=headers, **kwargs)
             except ConnectorError as exc:
@@ -164,9 +170,17 @@ class GoogleWorkspaceConnector(Connector):
             detail="OAuth token issued; Directory API reachable.",
         )
 
-    def create_user(self, profile: UserProfile) -> ExternalUser:
+    def create_user(
+        self, profile: UserProfile, *, idempotency_key: str | None = None
+    ) -> ExternalUser:
         body = {**self._attributes(profile), "suspended": not profile.active}
-        return self._to_external(self._call("POST", "/admin/directory/v1/users", json=body).json())
+        response = self._call(
+            "POST",
+            "/admin/directory/v1/users",
+            json=body,
+            extra_headers=idempotency_headers(idempotency_key),
+        )
+        return self._to_external(response.json())
 
     def update_user(self, external_id: str, profile: UserProfile) -> ExternalUser:
         response = self._call(

@@ -18,6 +18,7 @@ commit together or not at all.
 
 import logging
 import uuid
+from collections.abc import Callable
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -160,7 +161,17 @@ class EmployeeService:
 
     # ---- create ----------------------------------------------------------------------
 
-    def create(self, organization: Organization, payload: EmployeeCreate) -> Employee:
+    def create(
+        self,
+        organization: Organization,
+        payload: EmployeeCreate,
+        *,
+        before_commit: Callable[[Employee], None] | None = None,
+    ) -> Employee:
+        """Create an employee and record `employee.created` (transactional outbox).
+
+        `before_commit` runs inside the transaction, after the employee is flushed: the
+        API uses it to store the idempotency record atomically with the employee."""
         org_id = organization.id
         self._check_unique(org_id, payload.employee_number, payload.email)
         self._check_department(org_id, payload.department_id)
@@ -171,6 +182,8 @@ class EmployeeService:
             self.employees.add(employee)
             events = [created_event(employee)]
             records = record_events(self.session, events)
+            if before_commit is not None:
+                before_commit(employee)
             self.session.commit()
         except IntegrityError as exc:
             self.session.rollback()

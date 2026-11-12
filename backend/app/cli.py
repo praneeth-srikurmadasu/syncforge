@@ -16,6 +16,10 @@ The outbox relay (publishes integration events to the message broker; run one or
 next to the Celery workers - see docs/09):
 
     python -m app.cli outbox-relay
+
+Delete expired idempotency records (run daily, e.g. from cron or a scheduled job):
+
+    python -m app.cli purge-idempotency-records
 """
 
 import argparse
@@ -31,6 +35,7 @@ from app.core.database import SessionLocal
 from app.core.logging import configure_logging
 from app.events.relay import OutboxRelay
 from app.models import User
+from app.reliability.idempotency import purge_expired
 from app.repositories.users import UserRepository
 from app.schemas.auth import PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH
 from app.security.passwords import hash_password
@@ -81,12 +86,17 @@ def main(argv: list[str] | None = None) -> int:
     seed.add_argument("--admin-email", required=True, help="An already registered user")
     relay = commands.add_parser("outbox-relay", help="Publish outbox events to the broker")
     relay.add_argument("--once", action="store_true", help="Run one round, then exit")
+    commands.add_parser("purge-idempotency-records", help="Delete expired Idempotency-Key records")
     args = parser.parse_args(argv)
 
     if args.command == "seed-demo":
         return _seed_demo(args.admin_email)
     if args.command == "outbox-relay":
         return run_outbox_relay(once=args.once)
+    if args.command == "purge-idempotency-records":
+        with SessionLocal() as session:
+            print(f"Deleted {purge_expired(session)} expired idempotency record(s).")
+        return 0
 
     with SessionLocal() as session:
         existing = UserRepository(session).get_by_email(args.email.strip().lower())

@@ -29,10 +29,12 @@ processing is built to be safe to repeat:
 Each connector call goes through `ConnectorService.run_operation`, which records the
 external account link in its own commit. If a worker dies after the external call but
 before the job is marked succeeded, the re-run finds the link and treats `create_user`
-as already done instead of creating a second account.
+as already done instead of creating a second account. If it dies (or the call times
+out) *before* the link is recorded, the re-run sends the same idempotency key
+(`syncforge-job-<job id>`), and an API that honours keys returns the account it already
+created instead of creating another (docs/13).
 
-Not in this module yet (later Phase 6 parts): idempotency keys towards external APIs,
-the circuit breaker.
+Not in this module yet (a later Phase 6 part): the circuit breaker.
 """
 
 import logging
@@ -79,6 +81,11 @@ class ProcessResult:
     event_id: uuid.UUID
     outcome: str  # "completed", "retrying", "dead_letter", or "skipped" (not claimable)
     executions: int = 0
+
+
+def idempotency_key(job: SynchronizationJob) -> str:
+    """The same for every attempt (and every replay) of one job: one intended effect."""
+    return f"syncforge-job-{job.id}"
 
 
 def _now() -> datetime:
@@ -391,6 +398,7 @@ class EventProcessor:
                 job.connector_id,
                 operation=job.operation,
                 employee_id=job.employee_id,
+                idempotency_key=idempotency_key(job),
             )
         except BadGatewayError as error:  # the external application failed
             details: dict[str, Any] = error.details or {}

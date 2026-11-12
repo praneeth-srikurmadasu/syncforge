@@ -21,6 +21,7 @@ from app.connectors.base import (
     ConnectorSpec,
     ExternalUser,
     UserProfile,
+    idempotency_headers,
 )
 from app.connectors.registry import register
 
@@ -92,13 +93,16 @@ class SlackConnector(Connector):
             ok=True, latency_ms=self.http.last_latency_ms, detail="SCIM API reachable."
         )
 
-    def create_user(self, profile: UserProfile) -> ExternalUser:
+    def create_user(
+        self, profile: UserProfile, *, idempotency_key: str | None = None
+    ) -> ExternalUser:
         body = {
             "schemas": [SCIM_USER, SCIM_ENTERPRISE],
             "active": profile.active,
             **self._attributes(profile),
         }
-        response = self.http.request("POST", "/scim/v2/Users", json=body, headers=self._headers())
+        headers = {**self._headers(), **idempotency_headers(idempotency_key)}
+        response = self.http.request("POST", "/scim/v2/Users", json=body, headers=headers)
         return self._to_external(response.json())
 
     def update_user(self, external_id: str, profile: UserProfile) -> ExternalUser:

@@ -253,7 +253,13 @@ class ConnectorService:
         *,
         operation: str,
         employee_id: uuid.UUID,
+        idempotency_key: str | None = None,
     ) -> OperationResult:
+        """Run one operation for one employee and record the external account link.
+
+        `idempotency_key` is passed to `create_user` (the one operation that is not
+        naturally idempotent); callers that may repeat a call - the workflow engine -
+        pass the same key every time."""
         connector = self.get(organization, connector_id)
         employee = EmployeeRepository(self.session).get(organization.id, employee_id)
         if employee is None:
@@ -282,7 +288,7 @@ class ConnectorService:
         adapter = self._adapter(connector, for_operation=True)
         try:
             if operation == "create_user":
-                external = adapter.create_user(profile)
+                external = adapter.create_user(profile, idempotency_key=idempotency_key)
             elif operation == "update_user":
                 external = adapter.update_user(account.external_id, profile)
             elif operation == "deactivate_user":
