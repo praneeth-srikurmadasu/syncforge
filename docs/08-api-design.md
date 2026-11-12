@@ -1,6 +1,6 @@
 # 08 - API Design
 
-> **Scope:** endpoints implemented as of Phase 3. Live, always-current reference:
+> **Scope:** endpoints implemented as of Phase 4. Live, always-current reference:
 > **http://127.0.0.1:8000/docs** (Swagger UI) and `/openapi.json`, generated from the code.
 
 ## 1. Conventions
@@ -53,6 +53,19 @@
 | 422 | `manager_cycle` | The change would make someone their own (direct or indirect) manager |
 | 422 | `termination_before_joining` | Termination date earlier than joining date |
 | 422 | `invalid_date_range` | `joined_from` is after `joined_to` |
+| 404 | `connector_not_found` | Connector does not exist in this organization |
+| 409 | `connector_name_taken` | Connector name already used in this organization |
+| 409 | `connector_disconnected` | Connector has no credentials (disconnected); supply credentials to reconnect |
+| 409 | `connector_version_unsupported` | Stored connector was configured with an incompatible adapter major version |
+| 409 | `already_linked` | `create_user`: the employee already has an account in this application |
+| 409 | `not_linked` | `update_user` / `deactivate_user` / `get_user` before `create_user` |
+| 409 | `employee_terminated` | (connectors) `create_user` for a terminated employee |
+| 422 | `unknown_connector_type` | `connector_type` not in the catalog; `details.available` lists valid types |
+| 422 | `invalid_connector_settings` | Config or credentials do not match the connector's schema; `details` names fields, never values |
+| 422 | `invalid_base_url` / `host_not_allowed` | Base-URL override is not http(s), embeds credentials, or its host is not in `CONNECTOR_ALLOWED_HOSTS` |
+| 422 | `employee_not_found` | (connector operations) employee unknown in this organization |
+| 502 | `connector_error` | The external application failed; `details` is the normalized error (category, code, retryable, retry_after, status_code) |
+| 503 | `encryption_not_configured` | `CONNECTOR_ENCRYPTION_KEY` is not set, so credentials cannot be stored |
 | 500 | `internal_error` | Unexpected server error (details only in logs) |
 | 503 | `not_ready` | Readiness check failed (database unreachable) |
 
@@ -118,7 +131,7 @@ Auth: bearer token. Revokes **that token only**; other sessions of the same user
 
 ## 4. Organizations - `/api/v1/organizations`
 
-Permissions required per endpoint (see [security design](15-security-design.md#8-authorization-model)
+Permissions required per endpoint (see [security design](15-security-design.md#9-authorization-model)
 for the role matrix):
 
 | Method and path | Permission | Notes |
@@ -286,7 +299,70 @@ In Phase 3 events are written to the application log as
 events are stored in the transactional outbox within the employee's database transaction
 and processed by workers.
 
-## 7. PowerShell examples
+## 7. Connectors
+
+Design and error categories: [connector framework](10-connector-framework.md).
+
+| Method and path | Permission | Notes |
+|---|---|---|
+| `GET /api/v1/connector-types` | any authenticated user | Catalog: type, version, auth type, `simulated`, operations, JSON schemas for `config` and `credentials` |
+| `GET .../connectors` | `connectors:read` | Paginated, sorted by name |
+| `POST .../connectors` | `connectors:manage` | Create; credentials encrypted; `201`, status `pending` |
+| `GET .../connectors/{connector_id}` | `connectors:read` | |
+| `PATCH .../connectors/{connector_id}` | `connectors:manage` | `name`, `config`, `credentials` (any subset). Changing config or credentials resets status to `pending`; credentials on a disconnected connector reconnect it |
+| `POST .../connectors/{connector_id}/test` | `connectors:manage` | Live read-only call. **Always `200` when the test ran** - `ok` and `error` say how it went; `409 connector_disconnected` if there are no credentials |
+| `POST .../connectors/{connector_id}/disconnect` | `connectors:manage` | Deletes the credentials; idempotent |
+| `POST .../connectors/{connector_id}/operations` | `connectors:manage` | Run one operation for one employee now (manual sync) |
+| `GET .../connectors/{connector_id}/accounts` | `connectors:read` | Employees linked to accounts in this application |
+
+(`...` = `/api/v1/organizations/{organization_id}`.) Integration Managers and Organization
+Admins hold `connectors:manage`; every member holds `connectors:read`.
+
+### Create
+
+```json
+POST .../connectors
+{"connector_type": "google_workspace", "name": "Google (acme.example)",
+ "config": {"customer": "my_customer"},
+ "credentials": {"client_id": "syncforge-local", "client_secret": "mock-google-client-secret"}}
+```
+
+`201`:
+```json
+{"id": "...", "connector_type": "google_workspace", "name": "Google (acme.example)",
+ "version": "1.0.0", "simulated": true, "config": {"customer": "my_customer"},
+ "status": "pending", "last_tested_at": null, "last_error": null,
+ "credentials": {"auth_type": "oauth2_client_credentials", "fingerprint": "...cret",
+                 "updated_at": "..."},
+ "created_at": "...", "updated_at": "..."}
+```
+
+Credentials are never returned. Per type: Slack `{"token"}`, Google
+`{"client_id", "client_secret"}`, payroll `{"api_key"}`. Optional `config.base_url`
+overrides the default endpoint and must be an allowed host.
+
+### Test
+
+`200` `{"ok": true, "status": "connected", "tested_at": "...", "latency_ms": 12.4,
+"detail": "SCIM API reachable.", "error": null}` - or on failure
+`{"ok": false, "status": "error", ..., "error": {"category": "authentication",
+"code": "http_401", "retryable": false, "retry_after": null, ...}}`.
+
+### Operations
+
+Request: `{"operation": "create_user" | "update_user" | "deactivate_user" | "get_user",
+"employee_id": "..."}`
+
+`200`: `{"operation": "create_user", "connector_id": "...", "employee_id": "...",
+"external_id": "U4F2A9C1B0E", "external_active": true, "account_status": "active",
+"latency_ms": 9.8}`
+
+Rules: `create_user` requires no existing link and a non-terminated employee; the other
+operations require a link (`409 not_linked`). External failures return
+`502 connector_error` with the normalized error in `details`; nothing is linked when
+`create_user` fails. Operations are attempted **once** in Phase 4 (retries: Phase 6).
+
+## 8. PowerShell examples
 
 ```powershell
 $base = "http://127.0.0.1:8000/api/v1/auth"
@@ -318,4 +394,14 @@ $grace = Invoke-RestMethod -Method Post $emp -Headers $h -ContentType "applicati
 Invoke-RestMethod "${emp}?search=hop&sort=-joining_date" -Headers $h
 Invoke-RestMethod -Method Post "$emp/$($grace.id)/terminate" -Headers $h `
   -ContentType "application/json" -Body '{"termination_date":"2026-12-31"}'
+```
+
+```powershell
+# Connectors (mock services running - see mock-services/README.md)
+$con = "$api/organizations/$($org.id)/connectors"
+$slack = Invoke-RestMethod -Method Post $con -Headers $h -ContentType "application/json" `
+  -Body '{"connector_type":"slack","name":"Slack","credentials":{"token":"xoxp-mock-local-token"}}'
+Invoke-RestMethod -Method Post "$con/$($slack.id)/test" -Headers $h
+$op = @{ operation = "create_user"; employee_id = $grace.id } | ConvertTo-Json
+Invoke-RestMethod -Method Post "$con/$($slack.id)/operations" -Headers $h -ContentType "application/json" -Body $op
 ```

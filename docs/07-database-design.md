@@ -1,6 +1,6 @@
 # 07 - Database Design
 
-> **Scope:** tables implemented as of Phase 3 (migrations `0001`-`0003`). Later phases
+> **Scope:** tables implemented as of Phase 4 (migrations `0001`-`0004`). Later phases
 > append their tables here when they are built.
 
 Database: **PostgreSQL 16** (see [ADR-0002](adr/0002-postgresql-as-system-of-record.md)),
@@ -17,6 +17,10 @@ erDiagram
     ORGANIZATIONS ||--o{ EMPLOYEES : "employs"
     DEPARTMENTS |o--o{ EMPLOYEES : "groups"
     EMPLOYEES |o--o{ EMPLOYEES : "manages"
+    ORGANIZATIONS ||--o{ CONNECTORS : "configures"
+    CONNECTORS ||--o| CONNECTOR_CREDENTIALS : "authenticates with"
+    CONNECTORS ||--o{ EXTERNAL_ACCOUNTS : "manages"
+    EMPLOYEES ||--o{ EXTERNAL_ACCOUNTS : "has"
 
     ORGANIZATIONS {
         uuid id PK
@@ -73,6 +77,41 @@ erDiagram
         date joining_date
         date termination_date
         timestamptz archived_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    CONNECTORS {
+        uuid id PK
+        uuid organization_id FK
+        varchar connector_type
+        varchar connector_version
+        varchar name
+        jsonb config
+        varchar status
+        timestamptz last_tested_at
+        varchar last_error_category
+        varchar last_error_message
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    CONNECTOR_CREDENTIALS {
+        uuid id PK
+        uuid organization_id FK
+        uuid connector_id FK
+        varchar auth_type
+        text encrypted_secret
+        varchar fingerprint
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    EXTERNAL_ACCOUNTS {
+        uuid id PK
+        uuid organization_id FK
+        uuid connector_id FK
+        uuid employee_id FK
+        varchar external_id
+        varchar status
+        timestamptz last_synced_at
         timestamptz created_at
         timestamptz updated_at
     }
@@ -251,6 +290,65 @@ and synchronization history added in later phases. Hard deletion happens only wh
 whole organization is deleted (cascade). A retention policy that purges archived records
 after a configurable period is a documented future improvement.
 
+### `connectors` - configured connections to external applications
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | no | app | PK `pk_connectors` |
+| organization_id | uuid | no | | FK -> organizations.id **ON DELETE CASCADE** |
+| connector_type | varchar(50) | no | | Registry key: `slack`, `google_workspace`, `payroll` (validated by the service) |
+| connector_version | varchar(20) | no | | Adapter version at configuration time; major mismatch is refused |
+| name | varchar(100) | no | | Unique per organization |
+| config | jsonb | no | `'{}'` | Non-secret settings (e.g. `base_url`, Google `customer`); never secrets |
+| status | varchar(20) | no | `'pending'` | `pending` \| `connected` \| `error` \| `disconnected` |
+| last_tested_at | timestamptz | yes | | Time of the last connection test |
+| last_error_category / last_error_message | varchar(30) / varchar(500) | yes | | Normalized error of the last failed test |
+| created_at / updated_at | timestamptz | no | `now()` | |
+
+Constraints: `uq_connectors_organization_id_name`, `ck_connectors_connector_status`, and
+`uq_connectors_organization_id_id` (target of the composite foreign keys below).
+Index: `ix_connectors_organization_id_connector_type`. Several connectors of one type are
+allowed (for example two Slack workspaces).
+
+### `connector_credentials` - encrypted secrets (one set per connector)
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| id | uuid | no | PK |
+| organization_id, connector_id | uuid | no | Composite FK -> connectors (organization_id, id) **ON DELETE CASCADE** (`fk_connector_credentials_connector_same_organization`) |
+| auth_type | varchar(40) | no | `bearer_token` \| `oauth2_client_credentials` \| `api_key` |
+| encrypted_secret | text | no | Fernet token of the credentials JSON ([ADR-0009](adr/0009-encrypting-connector-credentials.md)) |
+| fingerprint | varchar(20) | no | Last 4 characters of the main secret, e.g. `...oken` |
+| created_at / updated_at | timestamptz | no | `updated_at` shows when credentials were last rotated |
+
+Constraint: `uq_connector_credentials_connector_id`. Kept in a separate table so list
+queries never load ciphertext, and so credentials can be rotated (row updated) or revoked
+(row deleted on disconnect) independently. Retention: deleted on disconnect and with the
+connector.
+
+### `external_accounts` - employee <-> account in an external application
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | no | app | PK |
+| organization_id | uuid | no | | Part of both composite FKs |
+| connector_id | uuid | no | | Composite FK -> connectors (organization_id, id) **ON DELETE CASCADE** |
+| employee_id | uuid | no | | Composite FK -> employees (organization_id, id) **ON DELETE CASCADE** |
+| external_id | varchar(255) | no | | ID assigned by the external application (opaque) |
+| status | varchar(20) | no | `'active'` | `active` \| `deactivated` |
+| last_synced_at | timestamptz | yes | | Last successful write to the external application |
+| created_at / updated_at | timestamptz | no | `now()` | |
+
+Constraints: `uq_external_accounts_connector_id_employee_id` (one account per application
+per employee - also stops two concurrent `create_user` calls from both linking),
+`uq_external_accounts_connector_id_external_id` (one external user maps to one employee),
+both composite FKs (`fk_external_accounts_connector_same_organization`,
+`fk_external_accounts_employee_same_organization`) so a link can never mix organizations.
+Index: `ix_external_accounts_organization_id_employee_id` ("which accounts does this
+employee have?").
+Why the table exists: email is not a stable identifier (people change it), so updates and
+deactivations must address the external user by the ID the application assigned.
+
 ## 4. Migration strategy
 
 - Every schema change is an **Alembic migration** in `backend/migrations/versions/`,
@@ -284,6 +382,10 @@ Commands (from `backend/`): `alembic upgrade head`, `alembic downgrade -1`,
   organization id>)`. Such requests in one organization run one at a time; other
   organizations are unaffected, and the lock is released automatically at commit or
   rollback. See [ADR-0007](adr/0007-advisory-lock-for-reporting-line-changes.md).
+- **No locks across external calls.** Connector operations read what they need, call the
+  external API without holding row locks, then write the result in a short transaction.
+  A slow vendor therefore cannot block other requests; races on the same link are settled
+  by the unique constraint on `(connector_id, employee_id)`.
 
 ## 6. Test database
 

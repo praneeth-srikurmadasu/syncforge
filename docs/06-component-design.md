@@ -1,6 +1,6 @@
 # 06 - Component Design
 
-> **Scope:** modules implemented as of Phase 3. Each later phase adds its module here
+> **Scope:** modules implemented as of Phase 4. Each later phase adds its module here
 > (connectors, workflows, events, reliability). Nothing here is planned-only.
 
 ## 1. Modules so far
@@ -9,6 +9,7 @@
 |---|---|---|
 | Identity and organizations | `models/{user,organization,revoked_token}.py`, `services/{auth,organizations}.py`, `security/` | [Security design](15-security-design.md) |
 | **Workforce (employees and departments)** | `models/employee.py`, `repositories/employees.py`, `services/employees.py`, `schemas/employees.py`, `api/v1/{employees,departments}.py`, `events/lifecycle.py` | this document |
+| Connectors (external applications) | `connectors/`, `models/connector.py`, `repositories/connectors.py`, `services/connectors.py`, `schemas/connectors.py`, `api/v1/connectors.py`, `security/encryption.py` | [Connector framework](10-connector-framework.md) |
 
 ## 2. Workforce module
 

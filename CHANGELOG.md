@@ -4,6 +4,47 @@ All notable changes to SyncForge are recorded here.
 
 ## [Unreleased]
 
+### Phase 4 - Connector framework and external application integrations (complete)
+
+#### Added
+- Connector framework: `Connector` interface (`test_connection`, `create_user`,
+  `update_user`, `deactivate_user`, `get_user`), `ConnectorSpec` metadata, registry with
+  `@register`, semantic versioning with major-version refusal.
+- `ConnectorHttpClient`: connect/read timeouts, host allowlist (SSRF), no redirects, no
+  environment proxies, latency measurement, no body logging.
+- Error normalization into categories (authentication, authorization, validation,
+  not_found, conflict, rate_limited, timeout, network, server, permanent, configuration)
+  with a `retryable` flag and `Retry-After` parsing (seconds or HTTP date, capped).
+- Adapters (simulated): Slack SCIM v2 (bearer token), Google Workspace Directory API
+  (OAuth 2.0 token exchange, caching, refresh-on-401), payroll REST API (API key).
+- Fernet encryption of connector credentials with comma-separated key rotation;
+  4-character fingerprints; blank key treated as not configured.
+- Alembic migration `0004`: `connectors`, `connector_credentials`, `external_accounts`
+  with composite same-organization foreign keys.
+- Connector API: catalog, list, create, get, update/rotate, test, disconnect, operations,
+  linked accounts; `502 connector_error` with normalized details.
+- Permissions `connectors:read` (all members) and `connectors:manage` (Integration
+  Manager, Organization Admin).
+- Mock Slack, Google Workspace and payroll services (`mock-services/mockservices/`) with
+  a shared failure-injection control API and Google token expiry.
+- Dependencies: `cryptography` 50.0.2, `httpx2` 2.16.0 (runtime); `python-multipart`
+  0.0.33 (mock services).
+- 124 new tests (332 total), including adapter and API tests over real HTTP.
+- Documentation: connector framework (new), mock-services README, database, API,
+  security, architecture and component design; ADR-0008 (adapter pattern), ADR-0009
+  (credential encryption); troubleshooting guide (`docs/21-troubleshooting.md`).
+
+#### Changed
+- The empty `mock-services/slack-mock`, `google-workspace-mock` and `payroll-mock`
+  folders were replaced by one importable package, `mock-services/mockservices/`.
+- Integration Managers gained `connectors:manage`.
+
+#### Fixed
+- Mock endpoint defaults use `127.0.0.1` instead of `localhost` (on Windows, `localhost`
+  tried IPv6 first and added ~2 s to every connector call).
+- `test_unreachable_service_is_a_network_error` failed on Windows, where refused loopback
+  connections are retried ~2 s; it now uses a 5 s connect timeout.
+
 ### Phase 3 - Employee management and workforce data model (complete)
 
 #### Added

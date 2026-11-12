@@ -1,6 +1,6 @@
 # 15 - Security Design
 
-> **Scope:** controls implemented as of Phase 3. The "Not yet implemented" table at the
+> **Scope:** controls implemented as of Phase 4. The "Not yet implemented" table at the
 > end lists what later phases add - those items are not claimed as done.
 
 ## 1. Authentication flow
@@ -79,14 +79,40 @@ end a session; the cost is one primary-key lookup per request.
 - The employee API exposes work-related fields only (no salary, personal address or
   government IDs are stored in Phase 3).
 
-## 7. Transport and browser access
+## 7. Connector credentials and outbound calls
+
+Details: [connector framework, sections 5 and 7](10-connector-framework.md#5-the-http-client-connectorhttpclient).
+
+- **Encrypted at rest** with Fernet (AES-128-CBC + HMAC-SHA256), key from
+  `CONNECTOR_ENCRYPTION_KEY` - never stored in the database
+  ([ADR-0009](adr/0009-encrypting-connector-credentials.md)). Several comma-separated keys
+  allow rotation. No key: connectors cannot be created (`503`); production refuses to start
+  (a blank value counts as no key).
+- **Never returned, logged or echoed**: the API shows `auth_type` and a 4-character
+  fingerprint; validation errors name fields only; logs carry IDs and outcomes only
+  (`test_logs_never_contain_credentials`, and every adapter test asserts the rejected secret
+  is absent from errors).
+- **Revocation**: disconnecting deletes the credentials row immediately.
+- **Server-side request forgery**: a connector's base URL must use http(s), contain no
+  embedded credentials, and point at a host in `CONNECTOR_ALLOWED_HOSTS` - checked when it
+  is saved and on every call. Redirects are not followed and environment proxies are ignored.
+  Limitation: the check is by host name, not resolved IP; production should allow only vendor
+  host names and restrict egress at the network level.
+- **Timeouts** on every outbound call (connect 3 s, read 10 s by default).
+- **Tenant isolation**: connectors, credentials and external accounts are scoped by
+  organization and linked through composite foreign keys, so a credential or account link
+  can never point at another organization's connector or employee.
+- **Mock services** have unauthenticated control endpoints (`/_mock/*`) and default fake
+  credentials - local use only, never exposed.
+
+## 8. Transport and browser access
 
 - CORS allows only configured origins (`CORS_ORIGINS`, default `http://localhost:4200`
   for the future Angular app), with `allow_credentials=False` because tokens travel in
   the `Authorization` header, not cookies.
 - TLS termination is a deployment concern (documented in the Phase 10 deployment guide).
 
-## 8. Authorization model
+## 9. Authorization model
 
 ### Roles and permissions
 
@@ -104,9 +130,11 @@ Endpoints check a **permission**, never a role name. The mapping lives in one pl
 | `departments:read` - list departments | yes | yes | yes | yes |
 | `employees:write` - create, update, terminate, archive employees | no | no | yes | yes |
 | `departments:manage` - create, rename, delete departments | no | no | yes | yes |
+| `connectors:read` - list and view connectors and linked accounts | yes | yes | yes | yes |
+| `connectors:manage` - configure, test, disconnect connectors; run operations | no | **yes** | yes | yes |
 
-Integration Managers currently have the same permissions as Viewers; connector and workflow
-permissions are added to their role when those features are built (Phases 4-5).
+Integration Managers operate integrations (connectors now, workflows in Phase 5) but do not
+manage people, departments or the organization itself.
 
 **Super Admin** is a platform-wide flag (`users.is_superadmin`), not a membership role. It
 grants every permission in every organization. It cannot be obtained through the API; an
@@ -165,14 +193,15 @@ the second request waits for the first to commit, then re-counts and is refused.
 `tests/test_concurrency.py` proves this with two real database sessions; the test fails if the
 lock is removed.
 
-## 9. Not yet implemented
+## 10. Not yet implemented
 
 | Control | Planned phase |
 |---|---|
 | Rate limiting on login/register | Phase 9 |
 | Request body size limits | Phase 9 |
-| Encrypted storage of connector credentials (OAuth secrets) | Phase 4 |
 | Scheduled cleanup of expired `revoked_tokens` rows | Phase 5 |
 | Audit log of security-relevant actions (including Super Admin actions) | Phase 7 |
 | Field-level masking of employee personal data for low-privilege roles | Future improvement |
 | Invitations for people who are not registered yet | Future improvement |
+| Secrets manager / envelope encryption for the connector key; bulk re-encryption command | Future improvement |
+| OAuth authorization-code ("Connect with Google") flow | Future improvement |
