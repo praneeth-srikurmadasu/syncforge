@@ -13,6 +13,9 @@
 4. Two users replay the same dead-letter entry at the same moment: exactly one replay
    happens; the other waits for the row lock, re-reads, and gets `already_replayed`.
 
+5. Two admins save the same employee at the same moment, both from version 1: one
+   succeeds; the other waits for the row lock, sees version 2 and gets 412.
+
 These tests use two real, separately committed database sessions (not the rolled-back
 test session), so they exercise PostgreSQL's actual locking.
 """
@@ -404,3 +407,50 @@ def test_simultaneous_replays_of_one_entry_replay_it_once(
             .where(OutboxEvent.event_id == entry.event_id)
         )
     assert outbox_rows == 1  # one replay was queued, not two
+
+
+# ---- optimistic concurrency ------------------------------------------------------------
+
+
+def test_simultaneous_saves_from_the_same_version_let_exactly_one_win(
+    org_with_two_employees: tuple[uuid.UUID, uuid.UUID, uuid.UUID],
+) -> None:
+    from app.core.errors import PreconditionFailedError
+
+    org_id, alice_id, _ = org_with_two_employees
+    outcome: dict[str, object] = {}
+
+    # Admin 1's request has locked Alice's row (the first step of an update).
+    first = SessionLocal()
+    EmployeeRepository(first).get(org_id, alice_id, for_update=True)
+
+    def admin_two_saves() -> None:
+        with SessionLocal() as second:
+            try:
+                EmployeeService(second).update(
+                    second.get(Organization, org_id),
+                    alice_id,
+                    {"location": "Chennai"},
+                    expected_version=1,
+                )
+                outcome["second"] = "saved"
+            except PreconditionFailedError as exc:
+                outcome["second"] = exc.code
+
+    thread = threading.Thread(target=admin_two_saves)
+    try:
+        thread.start()
+        thread.join(timeout=1.0)
+        waited = thread.is_alive()
+        EmployeeService(first).update(
+            first.get(Organization, org_id), alice_id, {"location": "Pune"}, expected_version=1
+        )
+    finally:
+        first.close()
+        thread.join(timeout=10)
+
+    assert waited, "the second save must wait for the first one's row lock"
+    assert outcome == {"second": "version_conflict"}
+    with SessionLocal() as check:
+        alice = check.get(Employee, alice_id)
+        assert (alice.location, alice.version) == ("Pune", 2)

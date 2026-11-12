@@ -45,6 +45,9 @@ _WRITE_ERRORS = _ERRORS | {
     409: {"description": "Duplicate employee number/email, or employee is terminated"},
     422: {"description": "Invalid input, unknown department/manager, or manager cycle"},
 }
+_PRECONDITION = {
+    412: {"description": "`version_conflict`: If-Match was sent and the employee changed since"}
+}
 
 
 @router.get("", response_model=Page[EmployeeResponse], responses=_ERRORS)
@@ -95,6 +98,38 @@ def list_employees(
     )
 
 
+def _parse_if_match(
+    if_match: Annotated[
+        str | None,
+        Header(
+            alias="If-Match",
+            max_length=40,
+            description='Optional. The ETag (version) you last read, e.g. `"3"`. The change '
+            "is refused with 412 if the employee changed since. `*` matches any version.",
+        ),
+    ] = None,
+) -> int | None:
+    if if_match is None or if_match.strip() == "*":
+        return None
+    value = if_match.strip()
+    if value.startswith("W/"):
+        value = value[2:]
+    value = value.strip('"')
+    if not value.isdigit():
+        raise UnprocessableError(
+            'If-Match must be an ETag returned by this API, e.g. "3".', code="invalid_if_match"
+        )
+    return int(value)
+
+
+IfMatch = Annotated[int | None, Depends(_parse_if_match)]
+
+
+def _with_etag(response: Response, employee: Employee) -> EmployeeResponse:
+    response.headers["ETag"] = f'"{employee.version}"'
+    return EmployeeResponse.model_validate(employee)
+
+
 IdempotencyKey = Annotated[
     str | None,
     Header(
@@ -121,12 +156,13 @@ def create_employee(
     payload: EmployeeCreate,
     access: CanWriteEmployees,
     db: DbSession,
+    response: Response,
     idempotency_key: IdempotencyKey = None,
 ) -> EmployeeResponse | JSONResponse:
     """Create an employee. Emits `employee.created`. Supports `Idempotency-Key`."""
     service = EmployeeService(db)
     if idempotency_key is None:
-        return EmployeeResponse.model_validate(service.create(access.organization, payload))
+        return _with_etag(response, service.create(access.organization, payload))
 
     store = IdempotencyStore(
         db,
@@ -152,35 +188,48 @@ def create_employee(
         if stored is not None:
             return _replay(stored)
         raise
-    return EmployeeResponse.model_validate(employee)
+    return _with_etag(response, employee)
 
 
 def _replay(stored: StoredResponse) -> JSONResponse:
-    return JSONResponse(
-        stored.body, status_code=stored.status_code, headers={REPLAY_HEADER: "true"}
-    )
+    headers = {REPLAY_HEADER: "true"}
+    if "version" in stored.body:
+        headers["ETag"] = f'"{stored.body["version"]}"'
+    return JSONResponse(stored.body, status_code=stored.status_code, headers=headers)
 
 
 @router.get("/{employee_id}", response_model=EmployeeResponse, responses=_ERRORS)
 def get_employee(
-    employee_id: uuid.UUID, access: CanReadEmployees, db: DbSession
+    employee_id: uuid.UUID, access: CanReadEmployees, db: DbSession, response: Response
 ) -> EmployeeResponse:
-    """Get one employee, including archived ones."""
+    """Get one employee, including archived ones. The `ETag` header carries its version."""
     employee = EmployeeService(db).get(access.organization, employee_id)
-    return EmployeeResponse.model_validate(employee)
+    return _with_etag(response, employee)
 
 
-@router.patch("/{employee_id}", response_model=EmployeeResponse, responses=_WRITE_ERRORS)
+@router.patch(
+    "/{employee_id}", response_model=EmployeeResponse, responses=_WRITE_ERRORS | _PRECONDITION
+)
 def update_employee(
-    employee_id: uuid.UUID, payload: EmployeeUpdate, access: CanWriteEmployees, db: DbSession
+    employee_id: uuid.UUID,
+    payload: EmployeeUpdate,
+    access: CanWriteEmployees,
+    db: DbSession,
+    response: Response,
+    if_match: IfMatch = None,
 ) -> EmployeeResponse:
     """Partially update an employee.
 
     Emits `employee.department_changed`, `employee.manager_changed` and/or
     `employee.updated` depending on what changed. To terminate, use `/terminate`.
-    """
-    employee = EmployeeService(db).update(access.organization, employee_id, payload.changes())
-    return EmployeeResponse.model_validate(employee)
+
+    Send `If-Match: "<version>"` (the ETag you received) to make the update conditional:
+    if someone changed the employee meanwhile, the response is `412 version_conflict`
+    and nothing is changed."""
+    employee = EmployeeService(db).update(
+        access.organization, employee_id, payload.changes(), expected_version=if_match
+    )
+    return _with_etag(response, employee)
 
 
 @router.post(
@@ -190,13 +239,16 @@ def update_employee(
     | {
         409: {"description": "Employee is already terminated"},
         422: {"description": "Termination date before joining date"},
-    },
+    }
+    | _PRECONDITION,
 )
 def terminate_employee(
     employee_id: uuid.UUID,
     access: CanWriteEmployees,
     db: DbSession,
+    response: Response,
     payload: Annotated[EmployeeTerminate | None, Body()] = None,
+    if_match: IfMatch = None,
 ) -> EmployeeResponse:
     """Terminate an employee (final). Direct reports move to the employee's manager.
 
@@ -204,18 +256,23 @@ def terminate_employee(
     """
     termination_date = payload.termination_date if payload else None
     employee = EmployeeService(db).terminate(
-        access.organization, employee_id, termination_date=termination_date
+        access.organization,
+        employee_id,
+        termination_date=termination_date,
+        expected_version=if_match,
     )
-    return EmployeeResponse.model_validate(employee)
+    return _with_etag(response, employee)
 
 
 @router.delete(
     "/{employee_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    responses=_ERRORS | {409: {"description": "Employee is not terminated"}},
+    responses=_ERRORS | {409: {"description": "Employee is not terminated"}} | _PRECONDITION,
 )
-def archive_employee(employee_id: uuid.UUID, access: CanWriteEmployees, db: DbSession) -> Response:
+def archive_employee(
+    employee_id: uuid.UUID, access: CanWriteEmployees, db: DbSession, if_match: IfMatch = None
+) -> Response:
     """Archive (soft-delete) a terminated employee. The record is kept for history and
     still returned by GET; it is hidden from lists unless `include_archived=true`."""
-    EmployeeService(db).archive(access.organization, employee_id)
+    EmployeeService(db).archive(access.organization, employee_id, expected_version=if_match)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

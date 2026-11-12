@@ -27,7 +27,12 @@ from sqlalchemy.orm import Session
 
 from app import audit
 from app.audit import field_changes
-from app.core.errors import ConflictError, NotFoundError, UnprocessableError
+from app.core.errors import (
+    ConflictError,
+    NotFoundError,
+    PreconditionFailedError,
+    UnprocessableError,
+)
 from app.events.lifecycle import (
     LifecycleEvent,
     classify_update,
@@ -224,14 +229,21 @@ class EmployeeService:
     # ---- update ----------------------------------------------------------------------
 
     def update(
-        self, organization: Organization, employee_id: uuid.UUID, changes: dict[str, Any]
+        self,
+        organization: Organization,
+        employee_id: uuid.UUID,
+        changes: dict[str, Any],
+        *,
+        expected_version: int | None = None,
     ) -> Employee:
+        """Apply `changes`. With `expected_version` (the client's If-Match), refuse with
+        412 if the employee changed since the client read it (optimistic concurrency)."""
         org_id = organization.id
         if "manager_id" in changes:
             # Serialize reporting-line changes in this organization, so two concurrent
             # requests (A reports to B, B reports to A) cannot together form a cycle.
             self.employees.lock_hierarchy(org_id)
-        employee = self._get_for_update(org_id, employee_id)
+        employee = self._get_for_update(org_id, employee_id, expected_version)
         if employee.employment_status is EmploymentStatus.TERMINATED:
             raise ConflictError(
                 "A terminated employee cannot be modified.", code="employee_terminated"
@@ -277,11 +289,16 @@ class EmployeeService:
     # ---- terminate -------------------------------------------------------------------
 
     def terminate(
-        self, organization: Organization, employee_id: uuid.UUID, *, termination_date: date | None
+        self,
+        organization: Organization,
+        employee_id: uuid.UUID,
+        *,
+        termination_date: date | None,
+        expected_version: int | None = None,
     ) -> Employee:
         org_id = organization.id
         self.employees.lock_hierarchy(org_id)  # direct reports are about to move
-        employee = self._get_for_update(org_id, employee_id)
+        employee = self._get_for_update(org_id, employee_id, expected_version)
         if employee.employment_status is EmploymentStatus.TERMINATED:
             raise ConflictError("Employee is already terminated.", code="employee_terminated")
 
@@ -319,9 +336,15 @@ class EmployeeService:
 
     # ---- archive ---------------------------------------------------------------------
 
-    def archive(self, organization: Organization, employee_id: uuid.UUID) -> None:
+    def archive(
+        self,
+        organization: Organization,
+        employee_id: uuid.UUID,
+        *,
+        expected_version: int | None = None,
+    ) -> None:
         """Soft delete. Idempotent: archiving an archived employee changes nothing."""
-        employee = self._get_for_update(organization.id, employee_id)
+        employee = self._get_for_update(organization.id, employee_id, expected_version)
         if employee.employment_status is not EmploymentStatus.TERMINATED:
             raise ConflictError(
                 "Only terminated employees can be archived. Terminate the employee first.",
@@ -348,10 +371,26 @@ class EmployeeService:
             details=details,
         )
 
-    def _get_for_update(self, organization_id: uuid.UUID, employee_id: uuid.UUID) -> Employee:
+    def _get_for_update(
+        self,
+        organization_id: uuid.UUID,
+        employee_id: uuid.UUID,
+        expected_version: int | None = None,
+    ) -> Employee:
+        """Lock the row; then compare versions. The lock makes the check and the write
+        one atomic step: no other transaction can change the row in between."""
         employee = self.employees.get(organization_id, employee_id, for_update=True)
         if employee is None:
             raise NotFoundError("Employee not found.", code="employee_not_found")
+        if expected_version is not None and employee.version != expected_version:
+            current = employee.version
+            self.session.rollback()  # release the row lock
+            raise PreconditionFailedError(
+                "This employee was changed by someone else since you loaded it. Reload, "
+                "re-apply your change and save again.",
+                code="version_conflict",
+                details={"expected_version": expected_version, "current_version": current},
+            )
         return employee
 
     def _check_unique(

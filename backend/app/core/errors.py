@@ -67,6 +67,14 @@ class ConflictError(AppError):
     code = "conflict"
 
 
+class PreconditionFailedError(AppError):
+    """The client's precondition (If-Match) no longer holds: someone changed the resource
+    since the client read it."""
+
+    status_code = 412
+    code = "precondition_failed"
+
+
 class UnprocessableError(AppError):
     """Well-formed input that breaks a business rule (e.g. a terminated manager)."""
 

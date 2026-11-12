@@ -19,6 +19,7 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Integer,
     String,
     UniqueConstraint,
     text,
@@ -91,6 +92,7 @@ class Employee(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_employees_organization_id_status", "organization_id", "employment_status"),
         Index("ix_employees_organization_id_department_id", "organization_id", "department_id"),
         Index("ix_employees_organization_id_manager_id", "organization_id", "manager_id"),
+        CheckConstraint("version >= 1", name="version_positive"),
     )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -121,6 +123,13 @@ class Employee(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     termination_date: Mapped[date | None] = mapped_column(Date)
     # Soft delete: archived employees are hidden from default lists but kept for history.
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Optimistic concurrency: incremented by SQLAlchemy on every UPDATE of the row
+    # (`version_id_col`, so the UPDATE also carries `WHERE version = <read version>`).
+    # Exposed as the ETag; clients send it back in If-Match, and a stale edit is refused
+    # with 412 instead of silently overwriting someone else's change (docs/14).
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+
+    __mapper_args__ = {"version_id_col": version}
 
     department: Mapped[Department | None] = relationship(
         foreign_keys=[organization_id, department_id],

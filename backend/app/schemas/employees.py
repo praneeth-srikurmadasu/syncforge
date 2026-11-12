@@ -196,3 +196,8 @@ class EmployeeResponse(BaseModel):
     archived_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    version: int = Field(
+        description="Incremented on every change; also sent as the ETag header. Send it "
+        "back in If-Match when changing the employee to avoid overwriting someone else's "
+        "change."
+    )
