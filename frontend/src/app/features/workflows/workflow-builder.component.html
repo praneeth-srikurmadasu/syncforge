@@ -1,0 +1,212 @@
+<div class="sf-page">
+  <sf-page-header
+    [title]="id() ? 'Edit workflow' : 'New workflow'"
+    [crumbs]="[
+      { label: 'Workflows', link: ['/o', org.orgId(), 'workflows'] },
+      { label: id() ? (existing.value()?.name ?? 'Workflow') : 'New' },
+    ]"
+    description="Choose the lifecycle event that starts the workflow, then the steps that run for it, in order."
+  />
+
+  @if (existing.error(); as err) {
+    <div class="sf-card"><sf-error-state [error]="err" (retry)="existing.reload()" /></div>
+  } @else if (id() && !existing.hasValue()) {
+    <sf-skeleton [rows]="8" />
+  } @else {
+    @if (error(); as err) {
+      <div class="sf-alert sf-alert--danger" role="alert">
+        <span>
+          {{ err.message }}
+          @if (err.requestId) {
+            <code class="sf-faint">Request {{ err.requestId }}</code>
+          }
+        </span>
+      </div>
+    }
+
+    <form class="layout" (submit)="$event.preventDefault(); save()" novalidate>
+      <section class="sf-card sf-card__body basics">
+        <div class="sf-field">
+          <label for="wf-name">Name</label>
+          <input
+            id="wf-name"
+            name="name"
+            class="sf-input"
+            maxlength="100"
+            [(ngModel)]="name"
+            autocomplete="off"
+          />
+          @if (submitted() && !name.trim()) {
+            <span class="sf-field__error">Name is required.</span>
+          }
+        </div>
+        <div class="sf-field">
+          <label for="wf-desc">Description <span class="sf-faint">(optional)</span></label>
+          <textarea
+            id="wf-desc"
+            name="description"
+            class="sf-textarea"
+            maxlength="500"
+            [(ngModel)]="description"
+          ></textarea>
+        </div>
+        <div class="sf-field">
+          <label for="wf-trigger">Starts when</label>
+          <select
+            id="wf-trigger"
+            name="trigger"
+            class="sf-select"
+            [ngModel]="trigger()"
+            (ngModelChange)="trigger.set($event)"
+          >
+            @for (t of triggers; track t) {
+              <option [value]="t">{{ t }}</option>
+            }
+          </select>
+          <span class="sf-field__hint">
+            Steps usually use <code>{{ suggested() }}</code> for this event.
+          </span>
+        </div>
+      </section>
+
+      <section class="sf-card">
+        <div class="sf-card__header">
+          <h2 class="sf-card__title">Steps</h2>
+          <span class="sf-faint small">Run one after another; a failed step stops the rest.</span>
+        </div>
+        @if (connectors.error(); as err) {
+          <sf-error-state [error]="err" (retry)="connectors.reload()" />
+        } @else if (connectors.value(); as page) {
+          @if (page.items.length === 0) {
+            <div class="sf-card__body">
+              <p class="sf-muted">
+                No connectors yet.
+                <a [routerLink]="['/o', org.orgId(), 'connectors']">Connect an application</a>
+                first.
+              </p>
+            </div>
+          } @else {
+            <ol class="steps">
+              @for (s of steps(); track s.key; let i = $index, first = $first, last = $last) {
+                <li [class.dup]="duplicateKeys().has(s.key)">
+                  <span class="pos">{{ i + 1 }}</span>
+                  <div class="sf-field">
+                    <label [for]="'step-conn-' + s.key" class="sf-visually-hidden"
+                      >Connector for step {{ i + 1 }}</label
+                    >
+                    <select
+                      [id]="'step-conn-' + s.key"
+                      [name]="'conn-' + s.key"
+                      class="sf-select"
+                      [ngModel]="s.connector_id"
+                      (ngModelChange)="updateStep(s.key, { connector_id: $event })"
+                    >
+                      <option value="" disabled>Choose a connector</option>
+                      @for (c of page.items; track c.id) {
+                        <option [value]="c.id">{{ c.name }} ({{ c.connector_type }})</option>
+                      }
+                    </select>
+                  </div>
+                  <div class="sf-field">
+                    <label [for]="'step-op-' + s.key" class="sf-visually-hidden"
+                      >Operation for step {{ i + 1 }}</label
+                    >
+                    <select
+                      [id]="'step-op-' + s.key"
+                      [name]="'op-' + s.key"
+                      class="sf-select sf-mono"
+                      [ngModel]="s.operation"
+                      (ngModelChange)="updateStep(s.key, { operation: $event })"
+                    >
+                      @for (o of operations; track o) {
+                        <option [value]="o">{{ o }}</option>
+                      }
+                    </select>
+                  </div>
+                  <div class="tools">
+                    @if (connectorById().get(s.connector_id)?.status === 'disconnected') {
+                      <sf-badge
+                        tone="warning"
+                        title="Activation is refused while a connector is disconnected"
+                        >Disconnected</sf-badge
+                      >
+                    }
+                    <button
+                      type="button"
+                      class="sf-btn sf-btn--ghost sf-btn--icon"
+                      [disabled]="first"
+                      (click)="move(i, -1)"
+                      [attr.aria-label]="'Move step ' + (i + 1) + ' up'"
+                    >
+                      <sf-icon name="arrow-up" [size]="14" />
+                    </button>
+                    <button
+                      type="button"
+                      class="sf-btn sf-btn--ghost sf-btn--icon"
+                      [disabled]="last"
+                      (click)="move(i, 1)"
+                      [attr.aria-label]="'Move step ' + (i + 1) + ' down'"
+                    >
+                      <sf-icon name="arrow-down" [size]="14" />
+                    </button>
+                    <button
+                      type="button"
+                      class="sf-btn sf-btn--ghost sf-btn--icon"
+                      (click)="remove(s.key)"
+                      [attr.aria-label]="'Remove step ' + (i + 1)"
+                    >
+                      <sf-icon name="trash" [size]="14" />
+                    </button>
+                  </div>
+                </li>
+              }
+            </ol>
+            <div class="add">
+              <button
+                type="button"
+                class="sf-btn"
+                (click)="addStep()"
+                [disabled]="steps().length >= maxSteps"
+              >
+                <sf-icon name="plus" [size]="14" /> Add step
+              </button>
+              <span class="sf-faint small">{{ steps().length }} of {{ maxSteps }}</span>
+            </div>
+          }
+        } @else {
+          <sf-skeleton [rows]="3" />
+        }
+        @if (submitted() && problems().length) {
+          <ul class="problems" role="alert">
+            @for (p of problems(); track p) {
+              <li>{{ p }}</li>
+            }
+          </ul>
+        }
+      </section>
+
+      <div class="actions">
+        <a
+          class="sf-btn"
+          [routerLink]="
+            id() ? ['/o', org.orgId(), 'workflows', id()] : ['/o', org.orgId(), 'workflows']
+          "
+          >Cancel</a
+        >
+        <button type="submit" class="sf-btn sf-btn--primary" [disabled]="busy()">
+          {{ busy() ? 'Saving…' : id() ? 'Save changes' : 'Create workflow' }}
+        </button>
+      </div>
+      @if (id()) {
+        <p class="sf-faint small">
+          Changing the trigger or steps creates version {{ (existing.value()?.version ?? 0) + 1 }}.
+          Past executions keep the version they ran.
+        </p>
+      } @else {
+        <p class="sf-faint small">
+          New workflows start inactive; activate it on its page when ready.
+        </p>
+      }
+    </form>
+  }
+</div>

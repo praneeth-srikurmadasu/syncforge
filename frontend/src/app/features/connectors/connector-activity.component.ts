@@ -7,6 +7,7 @@ import {
   input,
   linkedSignal,
 } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { ConnectorsApi } from '../../core/api/integrations.api';
 import { AuditEntry, Conflict, DeadLetter, ExternalAccount, Page } from '../../core/api/models';
 import { AuditApi, ConflictsApi, DeadLettersApi } from '../../core/api/operations.api';
@@ -30,6 +31,7 @@ type Kind = 'accounts' | 'dead-letters' | 'conflicts' | 'history';
 @Component({
   selector: 'sf-connector-activity',
   imports: [
+    RouterLink,
     StatusBadgeComponent,
     EmployeeNameComponent,
     JsonViewComponent,
@@ -110,7 +112,11 @@ type Kind = 'accounts' | 'dead-letters' | 'conflicts' | 'history';
                 @for (d of page.items; track d.id) {
                   <tr>
                     <td><sf-employee-name [id]="d.employee_id" /></td>
-                    <td>{{ humanize(d.event_type) }}</td>
+                    <td>
+                      <a [routerLink]="['/o', orgId(), 'dead-letters', d.id]">{{
+                        humanize(d.event_type)
+                      }}</a>
+                    </td>
                     <td>
                       <code>{{ d.operation ?? '-' }}</code>
                     </td>
@@ -263,6 +269,7 @@ export class ConnectorActivityComponent {
   readonly kind = input.required<Kind>();
 
   private readonly org = inject(OrgContextService);
+  protected readonly orgId = this.org.orgId;
   private readonly connectorsApi = inject(ConnectorsApi);
   private readonly deadLettersApi = inject(DeadLettersApi);
   private readonly conflictsApi = inject(ConflictsApi);

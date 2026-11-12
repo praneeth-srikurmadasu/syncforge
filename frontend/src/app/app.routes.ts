@@ -135,6 +135,76 @@ export const routes: Routes = [
           import('./features/events/event-detail.component').then((m) => m.EventDetailComponent),
       },
       {
+        path: 'workflows',
+        title: 'Workflows · SyncForge',
+        canActivate: [permissionGuard],
+        data: { permission: 'workflows:read' },
+        loadComponent: () =>
+          import('./features/workflows/workflows-list.component').then(
+            (m) => m.WorkflowsListComponent,
+          ),
+      },
+      {
+        path: 'workflows/new',
+        title: 'New workflow · SyncForge',
+        canActivate: [permissionGuard],
+        data: { permission: 'workflows:manage' },
+        loadComponent: () =>
+          import('./features/workflows/workflow-builder.component').then(
+            (m) => m.WorkflowBuilderComponent,
+          ),
+      },
+      {
+        path: 'workflows/:id',
+        title: 'Workflow · SyncForge',
+        canActivate: [permissionGuard],
+        data: { permission: 'workflows:read' },
+        loadComponent: () =>
+          import('./features/workflows/workflow-detail.component').then(
+            (m) => m.WorkflowDetailComponent,
+          ),
+      },
+      {
+        path: 'workflows/:id/edit',
+        title: 'Edit workflow · SyncForge',
+        canActivate: [permissionGuard],
+        data: { permission: 'workflows:manage' },
+        loadComponent: () =>
+          import('./features/workflows/workflow-builder.component').then(
+            (m) => m.WorkflowBuilderComponent,
+          ),
+      },
+      {
+        path: 'reliability',
+        title: 'Reliability · SyncForge',
+        canActivate: [permissionGuard],
+        data: { permission: 'events:read' },
+        loadComponent: () =>
+          import('./features/reliability/reliability.component').then(
+            (m) => m.ReliabilityComponent,
+          ),
+      },
+      {
+        path: 'dead-letters',
+        title: 'Dead-letter queue · SyncForge',
+        canActivate: [permissionGuard],
+        data: { permission: 'events:read' },
+        loadComponent: () =>
+          import('./features/dead-letters/dead-letters-list.component').then(
+            (m) => m.DeadLettersListComponent,
+          ),
+      },
+      {
+        path: 'dead-letters/:id',
+        title: 'Dead letter · SyncForge',
+        canActivate: [permissionGuard],
+        data: { permission: 'events:read' },
+        loadComponent: () =>
+          import('./features/dead-letters/dead-letter-detail.component').then(
+            (m) => m.DeadLetterDetailComponent,
+          ),
+      },
+      {
         path: 'forbidden',
         title: 'Not permitted · SyncForge',
         loadComponent: () =>

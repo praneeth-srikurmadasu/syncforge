@@ -43,6 +43,7 @@ export type WorkflowCreate = S['WorkflowCreate'];
 export type WorkflowUpdate = S['WorkflowUpdate'];
 export type StepInput = S['StepInput'];
 export type StepOperation = S['StepOperation'];
+export type StepResponse = S['StepResponse'];
 export type Execution = S['ExecutionResponse'];
 export type ExecutionStatus = S['ExecutionStatus'];
 export type Job = S['JobResponse'];

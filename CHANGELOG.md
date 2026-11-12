@@ -28,6 +28,9 @@ All notable changes to SyncForge are recorded here.
   history.
 - Event monitor and event page: filters in the URL, optional auto-refresh, timeline,
   workflow executions with per-step results, and the full attempt history.
+- Workflow screens: list, step builder (create and edit, new version on change),
+  workflow page with activation and execution history.
+- Reliability overview and dead-letter queue with entry pages and replay.
 - Password fields: show / hide button (accessible label and pressed state), Caps Lock
   notice, and a length-based strength hint at registration.
 

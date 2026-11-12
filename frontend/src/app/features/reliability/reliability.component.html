@@ -1,0 +1,191 @@
+<div class="sf-page">
+  <sf-page-header
+    title="Reliability"
+    description="How SyncForge copes with failing applications: retries with backoff, the dead-letter queue, circuit breakers and per-connector rate limits."
+  >
+    <a class="sf-btn sf-btn--primary" [routerLink]="['/o', org.orgId(), 'dead-letters']"
+      >Open dead-letter queue</a
+    >
+  </sf-page-header>
+
+  <section class="sf-grid sf-grid--metrics" aria-label="Reliability figures">
+    <sf-metric
+      label="Events waiting to retry"
+      icon="clock"
+      [value]="value(totals.value()?.retrying)"
+      [error]="failed(totals.value()?.retrying) || !!totals.error()"
+      [tone]="(value(totals.value()?.retrying) ?? 0) > 0 ? 'warning' : 'neutral'"
+      hint="Status retrying, now"
+      [link]="['/o', org.orgId(), 'events']"
+    />
+    <sf-metric
+      label="Open dead letters"
+      icon="inbox"
+      [value]="value(totals.value()?.deadLetters)"
+      [error]="failed(totals.value()?.deadLetters) || !!totals.error()"
+      [tone]="(value(totals.value()?.deadLetters) ?? 0) > 0 ? 'danger' : 'neutral'"
+      hint="Waiting for replay"
+      [link]="['/o', org.orgId(), 'dead-letters']"
+    />
+    <sf-metric
+      label="Circuits not closed"
+      icon="zap"
+      [value]="circuitsNotClosed()"
+      [error]="!!connectors.error()"
+      [tone]="(circuitsNotClosed() ?? 0) > 0 ? 'danger' : 'neutral'"
+      hint="Open or half-open, now"
+    />
+    @if (canAudit()) {
+      <sf-metric
+        label="Retries, last 24 h"
+        icon="refresh"
+        [value]="history.value()?.retries24h ?? null"
+        [error]="!!history.error()"
+        hint="From the audit log"
+      />
+      <sf-metric
+        label="Dead-lettered, last 7 days"
+        icon="circle-x"
+        [value]="history.value()?.deadLettered7d ?? null"
+        [error]="!!history.error()"
+        hint="From the audit log"
+      />
+      <sf-metric
+        label="Circuit openings, last 7 days"
+        icon="warning"
+        [value]="history.value()?.circuitOpened7d ?? null"
+        [error]="!!history.error()"
+        [hint]="(history.value()?.replays7d ?? 0) + ' replays in the same period'"
+      />
+    }
+  </section>
+
+  <section class="sf-card">
+    <div class="sf-card__header"><h2 class="sf-card__title">Connector protection</h2></div>
+    @if (connectors.error(); as err) {
+      <sf-error-state [error]="err" (retry)="connectors.reload()" />
+    } @else if (connectors.value(); as page) {
+      @if (page.items.length === 0) {
+        <sf-empty-state icon="plug" title="No connectors" />
+      } @else {
+        <div class="sf-table-wrap">
+          <table class="sf-table">
+            <thead>
+              <tr>
+                <th scope="col">Connector</th>
+                <th scope="col">Status</th>
+                <th scope="col">Circuit breaker</th>
+                <th scope="col" class="sf-cell-num">Consecutive failures</th>
+                <th scope="col">Rate limit</th>
+                <th scope="col">Last error</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (c of page.items; track c.id) {
+                <tr>
+                  <td>
+                    <a
+                      class="sf-cell-primary"
+                      [routerLink]="['/o', org.orgId(), 'connectors', c.id]"
+                      >{{ c.name }}</a
+                    >
+                  </td>
+                  <td><sf-status [value]="c.status" /></td>
+                  <td>
+                    <sf-status [value]="c.circuit.state" />
+                    @if (c.circuit.state !== 'closed' && c.circuit.open_until) {
+                      <span class="sf-faint small"
+                        >trial call <sf-time [value]="c.circuit.open_until"
+                      /></span>
+                    }
+                  </td>
+                  <td class="sf-cell-num">{{ c.circuit.consecutive_failures }}</td>
+                  <td class="sf-muted">{{ rateLimit(c) }}</td>
+                  <td>
+                    @if (c.last_error) {
+                      <sf-badge tone="danger">{{ humanize(c.last_error.category) }}</sf-badge>
+                    } @else {
+                      <span class="sf-faint">-</span>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    } @else {
+      <sf-skeleton [rows]="4" />
+    }
+  </section>
+
+  <div class="sf-grid sf-grid--2">
+    <section class="sf-card">
+      <div class="sf-card__header"><h2 class="sf-card__title">Recent retries</h2></div>
+      @if (!canAudit()) {
+        <sf-empty-state
+          icon="shield"
+          title="Needs audit log access"
+          message="Retry history is read from the audit log."
+        />
+      } @else if (recentRetries.error(); as err) {
+        <sf-error-state [error]="err" (retry)="recentRetries.reload()" />
+      } @else if (recentRetries.value(); as page) {
+        @if (page.items.length === 0) {
+          <sf-empty-state icon="refresh" title="No retries recorded" />
+        } @else {
+          <ul class="feed">
+            @for (r of page.items; track r.id) {
+              <li>
+                <div class="main">
+                  <span>
+                    <code>{{ detail(r, 'operation') }}</code> on
+                    {{ connectorNames().get(detail(r, 'connector_id')) ?? 'a connector' }}, attempt
+                    {{ detail(r, 'attempt') }}
+                  </span>
+                  <span class="sf-muted small">
+                    {{ humanize(detail(r, 'error_category')) }}
+                    @if (detail(r, 'error_code')) {
+                      <code>{{ detail(r, 'error_code') }}</code>
+                    }
+                  </span>
+                </div>
+                <a class="small" [routerLink]="['/o', org.orgId(), 'events', detail(r, 'event_id')]"
+                  >Event</a
+                >
+                <sf-time class="sf-faint small" [value]="r.created_at" />
+              </li>
+            }
+          </ul>
+        }
+      } @else {
+        <sf-skeleton [rows]="5" />
+      }
+    </section>
+
+    <section class="sf-card">
+      <div class="sf-card__header"><h2 class="sf-card__title">How failures are handled</h2></div>
+      <div class="sf-card__body how">
+        <p>
+          <strong>Retries.</strong> Temporary failures (timeouts, server errors, rate limiting) are
+          retried with exponential backoff and jitter, honouring <code>Retry-After</code>. Errors
+          that retrying cannot fix, such as rejected credentials, are not retried.
+        </p>
+        <p>
+          <strong>Dead-letter queue.</strong> When a step's retry budget runs out, or on a
+          non-retryable error, the event stops and is kept with its error for inspection and replay.
+        </p>
+        <p>
+          <strong>Circuit breaker.</strong> After repeated failures a connector's circuit opens and
+          calls wait instead of failing; after a pause one trial call decides whether it closes
+          again.
+        </p>
+        <p>
+          <strong>Rate limits.</strong> A connector can cap calls per minute; work over the limit
+          waits for the next minute without using an attempt.
+        </p>
+        <p class="sf-faint small">The exact limits are backend settings, described in docs/12.</p>
+      </div>
+    </section>
+  </div>
+</div>

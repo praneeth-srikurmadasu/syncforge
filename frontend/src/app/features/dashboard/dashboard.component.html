@@ -60,6 +60,7 @@
         [error]="failed(o?.deadLettersOpen)"
         [tone]="(value(o?.deadLettersOpen) ?? 0) > 0 ? 'danger' : 'neutral'"
         hint="Failed after retries, waiting for replay"
+        [link]="['/o', org.orgId(), 'dead-letters']"
       />
       <sf-metric
         label="Open conflicts"

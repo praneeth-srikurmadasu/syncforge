@@ -41,7 +41,20 @@ export const NAV: NavGroup[] = [
     label: 'Integrations',
     items: [
       { label: 'Connectors', path: 'connectors', icon: 'plug', permission: 'connectors:read' },
+      { label: 'Workflows', path: 'workflows', icon: 'workflow', permission: 'workflows:read' },
       { label: 'Events', path: 'events', icon: 'activity', permission: 'events:read' },
+    ],
+  },
+  {
+    label: 'Reliability',
+    items: [
+      { label: 'Overview', path: 'reliability', icon: 'shield', permission: 'events:read' },
+      {
+        label: 'Dead-letter queue',
+        path: 'dead-letters',
+        icon: 'inbox',
+        permission: 'events:read',
+      },
     ],
   },
 ];

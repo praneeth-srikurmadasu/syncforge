@@ -29,6 +29,7 @@
         <span>
           Processing stopped: a step failed after its retries (or with an error that cannot succeed
           on retry). The event is in the dead-letter queue, where it can be inspected and replayed.
+          <a [routerLink]="['/o', org.orgId(), 'dead-letters']">Open the dead-letter queue</a>.
         </span>
       </div>
     } @else if (e.status === 'retrying' && e.next_attempt_at) {
@@ -114,7 +115,11 @@
         @for (x of e.executions; track x.id) {
           <div class="execution">
             <div class="exec-head">
-              <span class="sf-cell-primary">{{ x.workflow_name }}</span>
+              <a
+                class="sf-cell-primary"
+                [routerLink]="['/o', org.orgId(), 'workflows', x.workflow_id]"
+                >{{ x.workflow_name }}</a
+              >
               <code class="sf-faint">v{{ x.workflow_version }}</code>
               <sf-status [value]="x.status" />
               <span class="sf-spacer"></span>

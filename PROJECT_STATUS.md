@@ -1,6 +1,6 @@
 # SyncForge - Project Status
 
-**Current phase:** 8 in progress - Angular frontend. Milestones 1-6 delivered (1-5 verified on Windows, commit `42fe0cc`); 7-10 next.
+**Current phase:** 8 in progress - Angular frontend. Milestones 1-7 delivered (1-6 verified on Windows, commit `88a1234`); 8-10 next.
 **Last updated:** 2026-11-12
 
 | Phase | Status |
@@ -12,7 +12,7 @@
 | 5 - Workflow engine and event processing | Complete |
 | 6 - Reliability engine and failure recovery | Complete |
 | 7 - Data integrity, conflicts, audit logging | Complete |
-| 8 - Angular frontend | In progress (milestones 1-6 of 10 delivered) |
+| 8 - Angular frontend | In progress (milestones 1-7 of 10 delivered) |
 | 9-10 | Not started |
 
 ## Phase 8 progress
@@ -28,7 +28,8 @@ Plan, screen-to-endpoint map and unsupported features: `docs/PHASE_8_FRONTEND_PL
 | 5 | Workforce: employee directory (search, department, status, location, joining-date range, archived, sort, pagination; filters in the URL), add / edit dialog (changed fields only, `If-Match`, `Idempotency-Key`, 412 recovery, manager search), employee page (reporting line, direct reports, sync events, conflicts, change history), terminate (typed confirmation) and archive, departments (add, rename, delete when empty), reporting lines tree, top-bar employee search | Done |
 | 5a | Owner-requested changes: password minimum 8 (backend, CLI, docs, tests), show / hide password toggle, Caps Lock notice, strength hint, clear message when the API is not running | Done |
 | 6 | Integrations and events: connector catalog and list; create / edit settings / replace credentials from each type's JSON schema (no per-connector UI code); connection test with the normalized error; manual operation for one employee; reconcile summary; disconnect with typed confirmation; linked accounts, dead letters, conflicts and history per connector; event monitor (status, type, employee filters, optional 5 s refresh) and event page (timeline, workflow executions with per-step results, every attempt with HTTP status, error, duration and retry time; refreshes itself until the event settles) | Done |
-| 7-10 | Workflows and reliability, data integrity and governance, QA, documentation | Next |
+| 7 | Workflows and reliability: workflow list (trigger / state filters), step builder (trigger, ordered connector + operation steps, reorder, suggested operation per trigger, duplicate and disconnected-connector warnings, 20-step limit), workflow page (step chain, activate / deactivate, execution history with per-step results); reliability overview (retrying events, open dead letters, circuits not closed, audit-log counts for retries / dead letters / circuit openings / replays, connector protection table, recent retries); dead-letter queue (status and connector filters) and entry page (reason, failed step, error, event, other entries for the event, replay with confirmation) | Done |
+| 8-10 | Data integrity and governance, QA, documentation | Next |
 
 ### Phase 8 verification so far (actual results)
 
@@ -65,6 +66,16 @@ Plan, screen-to-endpoint map and unsupported features: `docs/PHASE_8_FRONTEND_PL
   same person got the mock's `user_already_exists`, shown as an error; reconcile summary;
   disconnect deleted the credentials; event filters in the URL; an event page showed one
   execution with three steps and their account IDs.
+
+- Windows, milestone 6 (commit `88a1234`): build, **51 passed**, lint, format and API
+  check clean; GitHub compared file by file (338 tracked files, all identical).
+- Milestone 7, Linux workspace: build success; `npm run test:ci` **53 passed** (15 files);
+  lint and format clean. Headless Chrome against the running stack: a termination workflow
+  built in the UI (suggested `deactivate_user`, a duplicate step refused before sending,
+  created inactive), activated, steps reordered (version 2), deactivated again; with the
+  payroll mock answering 503 to every create, a new hire's event reached `dead_letter`
+  after 34 s (5 attempts); the fault was cleared, the entry replayed from its page, the
+  event then completed; the reliability overview showed the counts from the audit log.
 
 #### Milestones 1-4, Linux workspace (Node 22.23.4)
 
