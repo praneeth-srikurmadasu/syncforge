@@ -16,9 +16,11 @@ from app.models.revoked_token import RevokedToken
 from app.models.user import User
 from app.models.workflow import (
     TRIGGER_EVENT_TYPES,
+    AttemptOutcome,
     ExecutionStatus,
     JobStatus,
     StepOperation,
+    SynchronizationAttempt,
     SynchronizationJob,
     Workflow,
     WorkflowExecution,
@@ -27,6 +29,7 @@ from app.models.workflow import (
 
 __all__ = [
     "TRIGGER_EVENT_TYPES",
+    "AttemptOutcome",
     "Base",
     "Connector",
     "ConnectorCredential",
@@ -46,6 +49,7 @@ __all__ = [
     "OutboxEvent",
     "RevokedToken",
     "StepOperation",
+    "SynchronizationAttempt",
     "SynchronizationJob",
     "User",
     "Workflow",

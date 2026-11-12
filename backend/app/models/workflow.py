@@ -24,6 +24,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -61,6 +62,7 @@ class ExecutionStatus(enum.StrEnum):
 class JobStatus(enum.StrEnum):
     PENDING = "pending"  # not started yet
     RUNNING = "running"  # external call in progress
+    RETRYING = "retrying"  # an attempt failed retryably; next one at next_attempt_at
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     SKIPPED = "skipped"  # an earlier step failed, so this one was not attempted
@@ -212,6 +214,7 @@ class SynchronizationJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "synchronization_jobs"
     __table_args__ = (
         UniqueConstraint("execution_id", "position"),
+        UniqueConstraint("organization_id", "id"),  # target of the attempts' composite FK
         CheckConstraint("position >= 1", name="position_positive"),
         CheckConstraint(_in_list("operation", tuple(StepOperation)), name="operation"),
         ForeignKeyConstraint(
@@ -248,8 +251,9 @@ class SynchronizationJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
         server_default=JobStatus.PENDING.value,
     )
-    # Number of times the external call was attempted (Phase 6 adds per-attempt history).
+    # Number of times the external call was attempted (history: synchronization_attempts).
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     external_id: Mapped[str | None] = mapped_column(String(255))
     error_category: Mapped[str | None] = mapped_column(String(30))
     error_message: Mapped[str | None] = mapped_column(String(500))
@@ -259,6 +263,70 @@ class SynchronizationJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     execution: Mapped[WorkflowExecution] = relationship(
         back_populates="jobs", foreign_keys=[organization_id, execution_id]
     )
+    attempt_history: Mapped[list["SynchronizationAttempt"]] = relationship(
+        back_populates="job",
+        cascade="all, delete-orphan",
+        order_by="SynchronizationAttempt.attempt_number",
+        foreign_keys="[SynchronizationAttempt.organization_id, SynchronizationAttempt.job_id]",
+    )
 
     def __repr__(self) -> str:
         return f"<SynchronizationJob {self.position} {self.operation} {self.status}>"
+
+
+class AttemptOutcome(enum.StrEnum):
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+    # The worker stopped (crash, kill) during the call; found and closed on resume.
+    INTERRUPTED = "interrupted"
+
+
+class SynchronizationAttempt(UUIDPrimaryKeyMixin, Base):
+    """One external call made for a job: the retry history.
+
+    Written when the call starts (outcome NULL) and completed when it ends, so a worker
+    that dies mid-call leaves a visible, open attempt behind.
+    """
+
+    __tablename__ = "synchronization_attempts"
+    __table_args__ = (
+        UniqueConstraint("job_id", "attempt_number"),
+        CheckConstraint("attempt_number >= 1", name="attempt_number_positive"),
+        ForeignKeyConstraint(
+            ["organization_id", "job_id"],
+            ["synchronization_jobs.organization_id", "synchronization_jobs.id"],
+            name="fk_synchronization_attempts_job_same_organization",
+            ondelete="CASCADE",
+        ),
+        Index(
+            "ix_synchronization_attempts_organization_id_started_at",
+            "organization_id",
+            "started_at",
+        ),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    job_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    duration_ms: Mapped[float | None] = mapped_column(Float)
+    outcome: Mapped[AttemptOutcome | None] = mapped_column(
+        _status_enum(AttemptOutcome, "synchronization_attempt_outcome")
+    )
+    error_category: Mapped[str | None] = mapped_column(String(30))
+    error_code: Mapped[str | None] = mapped_column(String(50))
+    error_message: Mapped[str | None] = mapped_column(String(500))
+    http_status: Mapped[int | None] = mapped_column(Integer)
+    retryable: Mapped[bool | None] = mapped_column(Boolean)
+    retry_after_seconds: Mapped[float | None] = mapped_column(Float)
+    # Set when this failure scheduled another attempt.
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    job: Mapped[SynchronizationJob] = relationship(
+        back_populates="attempt_history", foreign_keys=[organization_id, job_id]
+    )
+
+    def __repr__(self) -> str:
+        return f"<SynchronizationAttempt {self.attempt_number} {self.outcome}>"

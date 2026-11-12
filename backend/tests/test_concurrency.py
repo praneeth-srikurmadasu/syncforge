@@ -7,6 +7,9 @@
 
 2. Reporting lines cannot form a cycle when two manager changes race.
 
+3. A worker receiving a retry message while the outbox relay still holds the event row
+   (it publishes first, then commits) claims the event instead of skipping it.
+
 These tests use two real, separately committed database sessions (not the rolled-back
 test session), so they exercise PostgreSQL's actual locking.
 """
@@ -176,3 +179,75 @@ def test_simultaneous_manager_changes_cannot_form_a_cycle(
             ).all()
         )
     assert managers == {alice: None, bob: alice}
+
+
+@pytest.fixture
+def due_retry_event() -> Iterator[uuid.UUID]:
+    from datetime import UTC, datetime, timedelta
+
+    from app.models import IntegrationEvent, IntegrationEventStatus
+
+    suffix = uuid.uuid4().hex[:8]
+    with SessionLocal() as session:
+        org = Organization(name="Retry Race", slug=f"retry-race-{suffix}")
+        session.add(org)
+        session.flush()
+        employee = Employee(
+            organization_id=org.id,
+            employee_number="E-1",
+            first_name="R",
+            last_name="R",
+            email=f"r-{suffix}@example.com",
+            joining_date=date(2026, 11, 1),
+        )
+        session.add(employee)
+        session.flush()
+        event = IntegrationEvent(
+            organization_id=org.id,
+            event_type="employee.created",
+            employee_id=employee.id,
+            payload={},
+            status=IntegrationEventStatus.RETRYING,
+            next_attempt_at=datetime.now(UTC) - timedelta(seconds=1),
+        )
+        session.add(event)
+        session.commit()
+        org_id, event_id = org.id, event.id
+    yield event_id
+    with SessionLocal() as session:
+        session.execute(delete(Organization).where(Organization.id == org_id))
+        session.commit()
+
+
+def test_a_worker_claims_a_due_retry_even_while_the_relay_holds_the_row(
+    due_retry_event: uuid.UUID,
+) -> None:
+    """Found in the live retry demonstration: the worker skipped the third attempt."""
+    from app.models import IntegrationEvent, IntegrationEventStatus
+    from app.workflows.engine import EventProcessor
+
+    relay_session = SessionLocal()
+    row = relay_session.scalars(
+        select(IntegrationEvent)
+        .where(IntegrationEvent.id == due_retry_event)
+        .with_for_update(skip_locked=True)
+    ).one()  # the relay holds the row and has just published the message
+    outcome: dict[str, object] = {}
+
+    def worker() -> None:
+        with SessionLocal() as session:
+            outcome["claimed"] = EventProcessor(session)._claim(due_retry_event) is not None
+
+    thread = threading.Thread(target=worker)
+    try:
+        thread.start()
+        thread.join(timeout=0.5)
+        waited = thread.is_alive()
+        row.status = IntegrationEventStatus.PENDING  # the relay commits after publishing
+        relay_session.commit()
+    finally:
+        relay_session.close()  # never leave the row locked, even if an assertion fails
+        thread.join(timeout=10)
+
+    assert waited, "the worker must wait for the relay's transaction"
+    assert outcome == {"claimed": True}

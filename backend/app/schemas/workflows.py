@@ -95,6 +95,7 @@ class JobResponse(BaseModel):
     operation: StepOperation
     status: JobStatus
     attempts: int
+    next_attempt_at: datetime | None
     external_id: str | None
     error_category: str | None
     error_message: str | None

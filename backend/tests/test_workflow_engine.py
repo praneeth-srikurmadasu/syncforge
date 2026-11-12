@@ -189,11 +189,13 @@ def test_a_failed_step_fails_the_execution_and_skips_the_rest(
     mocks: dict[str, RunningMock],
     connector_settings: Settings,
 ) -> None:
+    """A non-retryable failure (here 400: Google rejected the data) fails for good.
+    Retryable failures are covered in test_retries.py."""
     from mockservices.faults import FaultSpec
 
     workflow(db_session, org, "employee.created", [(apps[t], "create_user") for t in TYPES])
     mocks["google_workspace"].state.faults.append(
-        FaultSpec(kind="status", status=503, path_prefix="/admin")
+        FaultSpec(kind="status", status=400, path_prefix="/admin")
     )
     event = hire(db_session, org)
 
@@ -207,8 +209,12 @@ def test_a_failed_step_fails_the_execution_and_skips_the_rest(
     assert execution.status is ExecutionStatus.FAILED
     slack, google, payroll = execution.jobs
     assert slack.status is JobStatus.SUCCEEDED
-    assert (google.status, google.error_category) == (JobStatus.FAILED, "server")
-    assert "503" in google.error_message
+    assert (google.status, google.error_category, google.attempts) == (
+        JobStatus.FAILED,
+        "validation",
+        1,
+    )
+    assert "400" in google.error_message
     assert (payroll.status, payroll.attempts) == (JobStatus.SKIPPED, 0)
     assert mocks["payroll"].state.users == {}  # never called
 
@@ -301,19 +307,23 @@ def test_a_crashed_worker_is_resumed_without_repeating_finished_work(
     workflow(db_session, org, "employee.created", [(apps[t], "create_user") for t in TYPES])
     event = hire(db_session, org)
     processor = EventProcessor(db_session, connector_settings)
-    # Let a first run do the Slack step only, by making Google fail ...
+    # Let a first run do the Slack step only, by making Google fail for good ...
     from mockservices.faults import FaultSpec
 
     mocks["google_workspace"].state.faults.append(
-        FaultSpec(kind="status", status=503, path_prefix="/admin")
+        FaultSpec(kind="status", status=400, path_prefix="/admin")
     )
     processor.process(event.id)
-    # ... then rewind the database to the moment of the "crash".
+    # ... then rewind the database to the moment of the "crash": Slack's attempt still
+    # open (no outcome), Google and payroll never attempted.
     [execution] = executions(db_session, event)
     slack, google, payroll = execution.jobs
     slack.status, slack.external_id = JobStatus.RUNNING, None
+    slack.attempt_history[0].outcome = None
+    slack.attempt_history[0].finished_at = None
     google.status, google.error_category, google.error_message = JobStatus.PENDING, None, None
     google.attempts = 0
+    google.attempt_history.clear()
     payroll.status, payroll.error_message = JobStatus.PENDING, None
     execution.status = ExecutionStatus.RUNNING
     event.status = IntegrationEventStatus.PROCESSING
@@ -331,6 +341,9 @@ def test_a_crashed_worker_is_resumed_without_repeating_finished_work(
     assert mock_calls(mocks["slack"], *CREATE_PATHS["slack"]) == 1
     assert slack.external_id in mocks["slack"].state.users
     assert len(executions(db_session, event)) == 1
+    # The attempt the dead worker left open is closed as interrupted.
+    db_session.refresh(slack)
+    assert [a.outcome.value for a in slack.attempt_history] == ["interrupted", "succeeded"]
 
 
 def test_executions_keep_the_steps_they_ran_with(

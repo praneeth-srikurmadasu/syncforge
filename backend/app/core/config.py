@@ -73,6 +73,12 @@ class Settings(BaseSettings):
     outbox_batch_size: int = Field(default=100, ge=1, le=1000)
     outbox_poll_interval_seconds: float = Field(default=1.0, gt=0, le=60)
 
+    # ---- Retries (exponential backoff with jitter; see app/reliability/retry.py) ------
+    retry_max_attempts: int = Field(default=5, ge=1, le=20)  # first attempt included
+    retry_base_delay_seconds: float = Field(default=2.0, gt=0, le=300)
+    retry_max_delay_seconds: float = Field(default=300.0, gt=0, le=86400)
+    retry_jitter_ratio: float = Field(default=0.2, ge=0, le=1)
+
     @field_validator("connector_encryption_key", mode="before")
     @classmethod
     def _blank_key_means_unset(cls, value: object) -> object:

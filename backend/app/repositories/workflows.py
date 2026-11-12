@@ -11,6 +11,8 @@ from app.models import (
     ExecutionStatus,
     IntegrationEvent,
     IntegrationEventStatus,
+    SynchronizationAttempt,
+    SynchronizationJob,
     Workflow,
     WorkflowExecution,
     WorkflowStep,
@@ -188,6 +190,25 @@ class ExecutionRepository:
             .offset(offset)
         )
         return [tuple(row) for row in rows], total or 0  # type: ignore[misc]
+
+    def attempts_for_event(
+        self, organization_id: uuid.UUID, event_id: uuid.UUID
+    ) -> list[tuple[SynchronizationAttempt, SynchronizationJob]]:
+        rows = self.session.execute(
+            select(SynchronizationAttempt, SynchronizationJob)
+            .join(SynchronizationJob, SynchronizationJob.id == SynchronizationAttempt.job_id)
+            .join(WorkflowExecution, WorkflowExecution.id == SynchronizationJob.execution_id)
+            .where(
+                SynchronizationAttempt.organization_id == organization_id,
+                WorkflowExecution.event_id == event_id,
+            )
+            .order_by(
+                WorkflowExecution.created_at,
+                SynchronizationJob.position,
+                SynchronizationAttempt.attempt_number,
+            )
+        )
+        return [tuple(row) for row in rows]  # type: ignore[misc]
 
     @staticmethod
     def _base(organization_id: uuid.UUID):  # noqa: ANN205 - SQLAlchemy Select

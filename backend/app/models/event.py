@@ -39,6 +39,7 @@ from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 class IntegrationEventStatus(enum.StrEnum):
     PENDING = "pending"  # recorded, not yet picked up by a worker
     PROCESSING = "processing"  # claimed by a worker (until locked_until)
+    RETRYING = "retrying"  # a step failed retryably; due again at next_attempt_at
     COMPLETED = "completed"  # every matching workflow succeeded (or none matched)
     FAILED = "failed"  # at least one workflow step failed
 
@@ -60,6 +61,12 @@ class IntegrationEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "ix_integration_events_unfinished_locked_until",
             "locked_until",
             postgresql_where=text("status IN ('pending', 'processing')"),
+        ),
+        # The relay's "which retries are due?" query.
+        Index(
+            "ix_integration_events_retrying_next_attempt_at",
+            "next_attempt_at",
+            postgresql_where=text("status = 'retrying'"),
         ),
     )
 
@@ -92,6 +99,8 @@ class IntegrationEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # Worker lease: while status is processing and this is in the future, the event
     # belongs to one worker. After it, the event can be reclaimed (crashed worker).
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # While status is retrying: when the earliest waiting step may be attempted again.
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(String(1000))

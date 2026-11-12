@@ -13,6 +13,9 @@ It runs as its own process (`python -m app.cli outbox-relay`) and loops:
    event whose lease expired is put back to `pending` first: its worker is presumed dead,
    and a pending event can be claimed by the next worker that receives it. (The lease is
    renewed before every step, so it only expires if a worker stops renewing it.)
+3. **Retry.** Re-publish `retrying` events whose `next_attempt_at` has come (a step failed
+   retryably and its backoff is over), moving them back to `pending` so a worker claims
+   them and runs the waiting step again.
 
 A crash between "published" and "marked published" means the event is published again
 on the next poll. That is fine by design: delivery is at-least-once, and the worker's
@@ -40,6 +43,7 @@ Publisher = Callable[[str, str | None], None]
 class RelayResult:
     published: int = 0
     requeued: int = 0
+    retries: int = 0
     failed: bool = False
 
 
@@ -57,8 +61,11 @@ class OutboxRelay:
 
     def run_once(self) -> RelayResult:
         published, failed = self.publish_pending()
-        requeued = 0 if failed else self.requeue_expired()
-        return RelayResult(published=published, requeued=requeued, failed=failed)
+        if failed:
+            return RelayResult(published=published, failed=True)
+        requeued = self.requeue_expired()
+        retries = self.dispatch_due_retries()
+        return RelayResult(published=published, requeued=requeued, retries=retries)
 
     def publish_pending(self) -> tuple[int, bool]:
         """Publish one batch of unpublished outbox rows. Returns (published, broker_failed)."""
@@ -133,3 +140,34 @@ class OutboxRelay:
             )
         self.session.commit()
         return requeued
+
+    def dispatch_due_retries(self) -> int:
+        """Re-publish retrying events whose next attempt is due."""
+        now = _now()
+        events = list(
+            self.session.scalars(
+                select(IntegrationEvent)
+                .where(
+                    IntegrationEvent.status == IntegrationEventStatus.RETRYING,
+                    IntegrationEvent.next_attempt_at <= now,
+                )
+                .order_by(IntegrationEvent.next_attempt_at)
+                .limit(self.settings.outbox_batch_size)
+                .with_for_update(skip_locked=True)
+            )
+        )
+        dispatched = 0
+        for event in events:
+            try:
+                self.publish(str(event.id), event.correlation_id)
+            except Exception:
+                break  # broker down; the next poll tries again
+            event.status = IntegrationEventStatus.PENDING
+            event.locked_until = now + timedelta(seconds=self.settings.worker_lease_seconds)
+            dispatched += 1
+            logger.info(
+                "retry dispatched",
+                extra={"event_id": str(event.id), "attempts": event.attempts},
+            )
+        self.session.commit()
+        return dispatched

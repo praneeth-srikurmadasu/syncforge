@@ -4,29 +4,38 @@ Delivery is at-least-once (a message can arrive twice; a worker can die halfway)
 processing is built to be safe to repeat:
 
 1. **Claim.** One atomic UPDATE moves the event to `processing` and sets a lease
-   (`locked_until`). It succeeds only if the event is `pending`, or `processing` with an
-   expired lease (its worker died). A duplicate delivery of an event another worker owns,
-   or of a finished event, claims nothing and is skipped.
+   (`locked_until`). It succeeds only if the event is `pending`, `processing` with an
+   expired lease (its worker died), or `retrying` with its next attempt due. A duplicate
+   delivery of an event another worker owns, of a retry that is not due yet, or of a
+   finished event claims nothing and is skipped.
 2. **Plan.** For every *active* workflow whose trigger matches, get or create the
    execution for (event, workflow) - a unique constraint makes it exactly one - and copy
    the workflow's steps into synchronization jobs.
 3. **Run.** Jobs run in order. A job that already succeeded is skipped, so a resumed
    execution never repeats finished work. The lease is renewed before each job, and no
-   database lock is held during the external call.
-4. **Finish.** The event becomes `completed` if every execution succeeded (or nothing
-   matched), otherwise `failed`.
+   database lock is held during the external call. Every external call is recorded as a
+   `synchronization_attempts` row, opened before the call and closed after it.
+4. **Retry.** A retryable failure (rate limited, timeout, network, server error) with
+   attempts left puts the job in `retrying` with a `next_attempt_at` computed by the
+   retry policy (exponential backoff with jitter, never earlier than `Retry-After`). Later
+   jobs of that execution wait - steps are sequential. Non-retryable failures and
+   exhausted attempts fail the job for good.
+5. **Finish.** The event becomes `completed` if every execution succeeded (or nothing
+   matched), `retrying` (with the earliest `next_attempt_at`) if a job waits for a retry,
+   otherwise `failed`. The outbox relay re-dispatches retrying events when they are due.
 
 Each connector call goes through `ConnectorService.run_operation`, which records the
 external account link in its own commit. If a worker dies after the external call but
 before the job is marked succeeded, the re-run finds the link and treats `create_user`
 as already done instead of creating a second account.
 
-What this module does NOT do yet (Phase 6): retry failed jobs with backoff, dead-letter
-events, idempotency keys towards the external API, circuit breaking. A failed job here
-fails its execution, and later steps are skipped.
+Not in this module yet (later Phase 6 parts): dead-lettering and replay, idempotency
+keys towards external APIs, the circuit breaker.
 """
 
 import logging
+import random
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -39,15 +48,18 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError, BadGatewayError
 from app.models import (
+    AttemptOutcome,
     ExecutionStatus,
     IntegrationEvent,
     IntegrationEventStatus,
     JobStatus,
     Organization,
+    SynchronizationAttempt,
     SynchronizationJob,
     Workflow,
     WorkflowExecution,
 )
+from app.reliability.retry import RetryPolicy, decide
 from app.services.connectors import ConnectorService
 
 logger = logging.getLogger("syncforge.engine")
@@ -62,7 +74,7 @@ _SKIP_CODES = {
 @dataclass(frozen=True)
 class ProcessResult:
     event_id: uuid.UUID
-    outcome: str  # "completed", "failed", or "skipped" (not claimable)
+    outcome: str  # "completed", "retrying", "failed", or "skipped" (not claimable)
     executions: int = 0
 
 
@@ -70,10 +82,32 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+@dataclass
+class _Outcome:
+    """What one attempt of a job produced (before the retry decision)."""
+
+    status: JobStatus  # SUCCEEDED, SKIPPED or FAILED
+    external_id: str | None = None
+    category: str | None = None
+    code: str | None = None
+    message: str | None = None
+    http_status: int | None = None
+    retryable: bool = False
+    retry_after: float | None = None
+
+
 class EventProcessor:
-    def __init__(self, session: Session, settings: Settings | None = None) -> None:
+    def __init__(
+        self,
+        session: Session,
+        settings: Settings | None = None,
+        *,
+        rng: random.Random | None = None,
+    ) -> None:
         self.session = session
         self.settings = settings or get_settings()
+        self.policy = RetryPolicy.from_settings(self.settings)
+        self.rng = rng or random.Random()  # noqa: S311 - retry jitter, not security
 
     # ---- public --------------------------------------------------------------------
 
@@ -91,20 +125,44 @@ class EventProcessor:
             if execution.status is ExecutionStatus.RUNNING:
                 self._run(event, organization, execution)  # type: ignore[arg-type]
 
+        self._finish_event(event, executions)
+        outcome = event.status.value
+        logger.info(
+            "event processing finished",
+            extra={
+                **log,
+                "outcome": outcome,
+                "executions": len(executions),
+                "next_attempt_at": event.next_attempt_at.isoformat()
+                if event.next_attempt_at
+                else None,
+            },
+        )
+        return ProcessResult(event.id, outcome, len(executions))
+
+    def _finish_event(self, event: IntegrationEvent, executions: list[WorkflowExecution]) -> None:
+        waiting = [
+            job.next_attempt_at
+            for execution in executions
+            for job in execution.jobs
+            if job.status is JobStatus.RETRYING and job.next_attempt_at is not None
+        ]
         failed = [e for e in executions if e.status is ExecutionStatus.FAILED]
-        event.status = IntegrationEventStatus.FAILED if failed else IntegrationEventStatus.COMPLETED
-        event.completed_at = _now()
         event.locked_until = None
+        if waiting:
+            event.status = IntegrationEventStatus.RETRYING
+            event.next_attempt_at = min(waiting)
+            event.completed_at = None
+        else:
+            event.status = (
+                IntegrationEventStatus.FAILED if failed else IntegrationEventStatus.COMPLETED
+            )
+            event.next_attempt_at = None
+            event.completed_at = _now()
         event.last_error = (
             f"{len(failed)} of {len(executions)} workflow execution(s) failed." if failed else None
         )
         self.session.commit()
-        outcome = event.status.value
-        logger.info(
-            "event processing finished",
-            extra={**log, "outcome": outcome, "executions": len(executions)},
-        )
-        return ProcessResult(event.id, outcome, len(executions))
 
     # ---- claim -----------------------------------------------------------------------
 
@@ -118,6 +176,13 @@ class EventProcessor:
                     IntegrationEvent.status == IntegrationEventStatus.PENDING,
                     (IntegrationEvent.status == IntegrationEventStatus.PROCESSING)
                     & (IntegrationEvent.locked_until < now),
+                    # A due retry. Needed for correctness, not only convenience: the relay
+                    # publishes while it holds the row and only then commits "pending".
+                    # Under READ COMMITTED an UPDATE whose WHERE does not match the last
+                    # committed row version neither waits nor re-checks, so without this
+                    # clause a fast worker would see "retrying" and skip the event.
+                    (IntegrationEvent.status == IntegrationEventStatus.RETRYING)
+                    & (IntegrationEvent.next_attempt_at <= now),
                 ),
             )
             .values(
@@ -203,6 +268,7 @@ class EventProcessor:
             "workflow_id": str(execution.workflow_id),
         }
         failed = False
+        waiting = False
         for job in execution.jobs:
             if job.status in (JobStatus.SUCCEEDED, JobStatus.SKIPPED):
                 continue
@@ -213,14 +279,11 @@ class EventProcessor:
                 job.status = JobStatus.SKIPPED
                 job.error_message = "Not attempted: an earlier step failed."
                 continue
-            self._renew_lease(event)
-            job.status = JobStatus.RUNNING
-            job.attempts += 1
-            job.started_at = _now()
-            self.session.commit()  # visible as running; no lock held during the call
+            if job.status is JobStatus.RETRYING and job.next_attempt_at > _now():
+                waiting = True  # not due yet (another execution's retry woke the event)
+                break
 
-            self._execute(organization, job)
-            self.session.commit()
+            self._attempt(event, organization, job)
             logger.info(
                 "synchronization job finished",
                 extra={
@@ -229,19 +292,93 @@ class EventProcessor:
                     "operation": job.operation,
                     "connector_id": str(job.connector_id),
                     "status": job.status.value,
+                    "attempt": job.attempts,
                     "error_category": job.error_category,
+                    "next_attempt_at": job.next_attempt_at.isoformat()
+                    if job.next_attempt_at
+                    else None,
                 },
             )
+            if job.status is JobStatus.RETRYING:
+                waiting = True  # sequential: later steps wait for this one
+                break
             failed = job.status is JobStatus.FAILED
 
+        if waiting:
+            self.session.commit()  # execution stays running
+            return
         execution.status = ExecutionStatus.FAILED if failed else ExecutionStatus.SUCCEEDED
         execution.finished_at = _now()
         self.session.commit()
 
-    def _execute(self, organization: Organization, job: SynchronizationJob) -> None:
+    def _attempt(
+        self, event: IntegrationEvent, organization: Organization, job: SynchronizationJob
+    ) -> None:
+        """Make one external call for `job`, record it, and decide what happens next."""
+        self._close_interrupted_attempts(job)
+        self._renew_lease(event)
+        job.status = JobStatus.RUNNING
+        job.attempts += 1
+        job.next_attempt_at = None
+        job.started_at = _now()
+        attempt = SynchronizationAttempt(
+            organization_id=job.organization_id,
+            attempt_number=job.attempts,
+            started_at=job.started_at,
+        )
+        job.attempt_history.append(attempt)  # keeps the loaded collection current
+        self.session.commit()  # visible as running; no lock held during the call
+
+        started = time.perf_counter()
+        outcome = self._execute(organization, job)
+        finished = _now()
+        attempt.finished_at = finished
+        attempt.duration_ms = round((time.perf_counter() - started) * 1000, 2)
+        attempt.outcome = AttemptOutcome(outcome.status.value)
+        attempt.error_category = outcome.category
+        attempt.error_code = outcome.code
+        attempt.error_message = outcome.message
+        attempt.http_status = outcome.http_status
+        attempt.retryable = outcome.retryable if outcome.status is JobStatus.FAILED else None
+        attempt.retry_after_seconds = outcome.retry_after
+
+        job.finished_at = finished
+        job.error_category = outcome.category
+        job.error_message = outcome.message
+        if outcome.external_id is not None:
+            job.external_id = outcome.external_id
+        if outcome.status is not JobStatus.FAILED:
+            job.status = outcome.status
+        else:
+            decision = decide(
+                self.policy,
+                attempts_made=job.attempts,
+                retryable=outcome.retryable,
+                retry_after=outcome.retry_after,
+                rng=self.rng,
+            )
+            if decision.retry:
+                job.status = JobStatus.RETRYING
+                job.next_attempt_at = finished + timedelta(seconds=decision.delay_seconds or 0)
+                attempt.next_attempt_at = job.next_attempt_at
+            else:
+                job.status = JobStatus.FAILED
+                if decision.reason == "attempts_exhausted":
+                    job.error_message = (
+                        f"Gave up after {job.attempts} attempts: {outcome.message or ''}"
+                    )[:500]
+        self.session.commit()
+
+    def _close_interrupted_attempts(self, job: SynchronizationJob) -> None:
+        """An attempt left open means a worker stopped during the call (crash, kill)."""
+        for previous in job.attempt_history:
+            if previous.outcome is None:
+                previous.outcome = AttemptOutcome.INTERRUPTED
+                previous.finished_at = _now()
+                previous.error_message = "The worker stopped during this attempt."
+
+    def _execute(self, organization: Organization, job: SynchronizationJob) -> _Outcome:
         service = ConnectorService(self.session, self.settings)
-        job.error_category = None
-        job.error_message = None
         try:
             result = service.run_operation(
                 organization,
@@ -251,33 +388,29 @@ class EventProcessor:
             )
         except BadGatewayError as error:  # the external application failed
             details: dict[str, Any] = error.details or {}
-            self._finish(job, JobStatus.FAILED, category=details.get("category"), message=error)
+            return _Outcome(
+                JobStatus.FAILED,
+                category=details.get("category"),
+                code=details.get("code"),
+                message=error.message[:500],
+                http_status=details.get("status_code"),
+                retryable=bool(details.get("retryable")),
+                retry_after=details.get("retry_after"),
+            )
         except AppError as error:
             if error.code == "already_linked" and job.operation == "create_user":
                 # Done earlier (e.g. by a run that crashed before recording success).
-                external_id = (error.details or {}).get("external_id")
-                self._finish(job, JobStatus.SUCCEEDED, external_id=external_id)
-            elif error.code in _SKIP_CODES:
-                self._finish(job, JobStatus.SKIPPED, message=_SKIP_CODES[error.code])
-            else:  # disconnected connector, unknown employee, unsupported version, ...
-                self._finish(job, JobStatus.FAILED, category="configuration", message=error)
-        else:
-            self._finish(job, JobStatus.SUCCEEDED, external_id=result.external_id)
-
-    @staticmethod
-    def _finish(
-        job: SynchronizationJob,
-        status: JobStatus,
-        *,
-        external_id: str | None = None,
-        category: str | None = None,
-        message: object | None = None,
-    ) -> None:
-        job.status = status
-        job.finished_at = _now()
-        if external_id is not None:
-            job.external_id = external_id
-        job.error_category = category
-        if message is not None:
-            text = getattr(message, "message", None) or str(message)
-            job.error_message = text[:500]
+                return _Outcome(
+                    JobStatus.SUCCEEDED, external_id=(error.details or {}).get("external_id")
+                )
+            if error.code in _SKIP_CODES:
+                return _Outcome(JobStatus.SKIPPED, message=_SKIP_CODES[error.code])
+            # Disconnected connector, unknown employee, unsupported version, ...: our side,
+            # and repeating it will not help until someone changes the configuration.
+            return _Outcome(
+                JobStatus.FAILED,
+                category="configuration",
+                code=error.code,
+                message=error.message[:500],
+            )
+        return _Outcome(JobStatus.SUCCEEDED, external_id=result.external_id)
