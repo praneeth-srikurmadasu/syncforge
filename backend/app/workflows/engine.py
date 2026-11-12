@@ -15,6 +15,9 @@ processing is built to be safe to repeat:
    execution never repeats finished work. The lease is renewed before each job, and no
    database lock is held during the external call. Every external call is recorded as a
    `synchronization_attempts` row, opened before the call and closed after it.
+   Before each call the connector's rate limit is checked; a job over the limit is
+   deferred to the next minute without using an attempt. The connector's circuit
+   breaker may refuse the call (`circuit_open`, retryable, counts as an attempt).
 4. **Retry.** A retryable failure (rate limited, timeout, network, server error) with
    attempts left puts the job in `retrying` with a `next_attempt_at` computed by the
    retry policy (exponential backoff with jitter, never earlier than `Retry-After`). Later
@@ -34,7 +37,8 @@ out) *before* the link is recorded, the re-run sends the same idempotency key
 (`syncforge-job-<job id>`), and an API that honours keys returns the account it already
 created instead of creating another (docs/13).
 
-Not in this module yet (a later Phase 6 part): the circuit breaker.
+Reliability building blocks used here live in app/reliability/: retry policy, dead
+letter, rate limit; the circuit breaker wraps the call inside ConnectorService.
 """
 
 import logging
@@ -53,6 +57,7 @@ from app.core.config import Settings, get_settings
 from app.core.errors import AppError, BadGatewayError
 from app.models import (
     AttemptOutcome,
+    Connector,
     ExecutionStatus,
     IntegrationEvent,
     IntegrationEventStatus,
@@ -64,6 +69,7 @@ from app.models import (
     WorkflowExecution,
 )
 from app.reliability.dead_letter import dead_letter
+from app.reliability.rate_limit import RateLimiter, rate_limit
 from app.reliability.retry import RetryPolicy, decide
 from app.services.connectors import ConnectorService
 
@@ -294,6 +300,9 @@ class EventProcessor:
             if job.status is JobStatus.RETRYING and job.next_attempt_at > _now():
                 waiting = True  # not due yet (another execution's retry woke the event)
                 break
+            if self._defer_if_throttled(job, log):
+                waiting = True  # over the connector's rate limit: wait, no attempt used
+                break
 
             self._attempt(event, organization, job)
             logger.info(
@@ -381,6 +390,33 @@ class EventProcessor:
                         :500
                     ]
         self.session.commit()
+
+    def _defer_if_throttled(self, job: SynchronizationJob, log: dict[str, str]) -> bool:
+        """Apply the connector's `rate_limit_per_minute` (app/reliability/rate_limit.py)."""
+        connector = self.session.get(Connector, job.connector_id)
+        if connector is None:
+            return False
+        wait = RateLimiter(self.session).acquire(connector)
+        if wait is None:
+            return False
+        job.status = JobStatus.RETRYING
+        # Spread the deferred jobs over the first second of the next window.
+        job.next_attempt_at = _now() + timedelta(seconds=wait + self.rng.uniform(0, 1))
+        job.error_category = "throttled"
+        job.error_message = (
+            f"Waiting for this connector's rate limit ({rate_limit(connector)} calls/minute)."
+        )
+        self.session.commit()
+        logger.info(
+            "synchronization job deferred by rate limit",
+            extra={
+                **log,
+                "position": job.position,
+                "connector_id": str(job.connector_id),
+                "next_attempt_at": job.next_attempt_at.isoformat(),
+            },
+        )
+        return True
 
     def _close_interrupted_attempts(self, job: SynchronizationJob) -> None:
         """An attempt left open means a worker stopped during the call (crash, kill)."""

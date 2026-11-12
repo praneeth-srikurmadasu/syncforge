@@ -10,7 +10,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from app.models import ConnectorStatus, ExternalAccountStatus
+from app.models import CircuitState, ConnectorStatus, ExternalAccountStatus
 
 ConnectorName = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
@@ -71,6 +71,17 @@ class ConnectorErrorSummary(BaseModel):
     message: str
 
 
+class CircuitSummary(BaseModel):
+    """The connector's circuit breaker (docs/12)."""
+
+    state: CircuitState = Field(
+        description="`closed`: normal. `open`: calls paused until `open_until` after "
+        "repeated failures. `half_open`: one trial call is being made."
+    )
+    consecutive_failures: int
+    open_until: datetime | None
+
+
 class ConnectorResponse(BaseModel):
     id: uuid.UUID
     connector_type: str
@@ -82,6 +93,7 @@ class ConnectorResponse(BaseModel):
     last_tested_at: datetime | None
     last_error: ConnectorErrorSummary | None
     credentials: CredentialSummary | None
+    circuit: CircuitSummary
     created_at: datetime
     updated_at: datetime
 

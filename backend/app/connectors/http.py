@@ -1,7 +1,9 @@
 """The single HTTP client every connector uses.
 
 Centralizing outbound HTTP here means every connector gets the same:
-* connect and read timeouts (no request can hang a worker forever);
+* connect and read timeouts per request, and an operation deadline across all requests
+  of one operation (Google's token call + the API call, Slack's DELETE + GET): no
+  operation can hang a worker forever, however many requests it makes;
 * host allowlist check (server-side request forgery protection);
 * no automatic redirects (a redirect could point at a disallowed host);
 * no proxy settings picked up implicitly from the environment;
@@ -46,6 +48,14 @@ def check_allowed_url(base_url: str, allowed_hosts: list[str]) -> None:
         )
 
 
+def _operation_timeout() -> ConnectorError:
+    return ConnectorError(
+        ErrorCategory.TIMEOUT,
+        "The operation did not finish within its time limit.",
+        "operation_timeout",
+    )
+
+
 class ConnectorHttpClient:
     def __init__(
         self,
@@ -54,11 +64,18 @@ class ConnectorHttpClient:
         allowed_hosts: list[str],
         connect_timeout: float,
         read_timeout: float,
+        operation_timeout: float | None = None,
         headers: dict[str, str] | None = None,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         check_allowed_url(base_url, allowed_hosts)
         self.base_url = base_url.rstrip("/")
+        self.connect_timeout = connect_timeout
+        self.read_timeout = read_timeout
+        # A client is built for one operation, so the deadline starts now.
+        self.deadline = (
+            time.monotonic() + operation_timeout if operation_timeout is not None else None
+        )
         self._client = httpx.Client(
             base_url=self.base_url,
             headers=headers,
@@ -79,11 +96,22 @@ class ConnectorHttpClient:
         params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
     ) -> httpx.Response:
+        timeout, capped = self._timeout()
         started = time.perf_counter()
         try:
             response = self._client.request(
-                method, path, json=json, data=data, params=params, headers=headers
+                method,
+                path,
+                json=json,
+                data=data,
+                params=params,
+                headers=headers,
+                timeout=timeout,
             )
+        except httpx.TimeoutException as exc:
+            if capped:  # the operation's deadline, not this request's own timeout
+                raise _operation_timeout() from exc
+            raise error_from_transport(exc) from exc
         except httpx.TransportError as exc:
             raise error_from_transport(exc) from exc
         finally:
@@ -98,6 +126,19 @@ class ConnectorHttpClient:
         if response.status_code >= 400:
             raise error_from_response(response)
         return response
+
+    def _timeout(self) -> tuple[httpx.Timeout, bool]:
+        """This request's timeout: the configured ones, cut down to what is left of the
+        operation deadline. Returns (timeout, cut_down)."""
+        if self.deadline is None:
+            return httpx.Timeout(self.read_timeout, connect=self.connect_timeout), False
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise _operation_timeout()
+        read = min(self.read_timeout, remaining)
+        connect = min(self.connect_timeout, remaining)
+        capped = read < self.read_timeout or connect < self.connect_timeout
+        return httpx.Timeout(read, connect=connect), capped
 
     def close(self) -> None:
         self._client.close()

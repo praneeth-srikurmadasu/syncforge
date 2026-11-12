@@ -62,6 +62,13 @@ class BaseConnectorConfig(BaseModel):
     base_url: HttpUrl | None = Field(
         default=None, description="Override the default endpoint (must be an allowed host)."
     )
+    rate_limit_per_minute: int | None = Field(
+        default=None,
+        ge=1,
+        le=10000,
+        description="Optional. Calls SyncForge may start per minute for this connector "
+        "(shared by all workers); jobs over the limit wait for the next minute.",
+    )
 
 
 class BaseCredentials(BaseModel):

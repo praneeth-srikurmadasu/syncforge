@@ -15,10 +15,11 @@ from fastapi import APIRouter, Depends, status
 from app.api.deps import CurrentUser, DbSession, require_org_permission
 from app.connectors import registry
 from app.core.config import Settings, get_settings
-from app.models import Connector
+from app.models import CircuitState, Connector
 from app.repositories.connectors import ConnectorRepository, ExternalAccountRepository
 from app.schemas.common import Limit, Offset, Page
 from app.schemas.connectors import (
+    CircuitSummary,
     ConnectionTestResponse,
     ConnectorCreate,
     ConnectorErrorSummary,
@@ -88,6 +89,11 @@ def _response(connector: Connector) -> ConnectorResponse:
             )
             if credential
             else None
+        ),
+        circuit=CircuitSummary(
+            state=connector.circuit.state if connector.circuit else CircuitState.CLOSED,
+            consecutive_failures=connector.circuit.consecutive_failures if connector.circuit else 0,
+            open_until=connector.circuit.open_until if connector.circuit else None,
         ),
         created_at=connector.created_at,
         updated_at=connector.updated_at,

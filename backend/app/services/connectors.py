@@ -46,6 +46,7 @@ from app.models import (
     ExternalAccountStatus,
     Organization,
 )
+from app.reliability.circuit_breaker import CircuitBreaker
 from app.repositories.connectors import ConnectorRepository, ExternalAccountRepository
 from app.repositories.employees import EmployeeRepository
 from app.security.encryption import CredentialCipher, fingerprint
@@ -221,6 +222,7 @@ class ConnectorService:
                 error=error.to_dict(),
             )
         self._record_test(connector, tested_at, None)
+        CircuitBreaker(self.session, self.settings).reset(connector)
         self._log("connector test succeeded", connector, latency_ms=check.latency_ms)
         return ConnectionTestResult(
             ok=True,
@@ -286,6 +288,20 @@ class ConnectorService:
 
         profile = profile_from_employee(employee)
         adapter = self._adapter(connector, for_operation=True)
+        breaker = CircuitBreaker(self.session, self.settings)
+        try:
+            breaker.before_call(connector)  # raises circuit_open while the breaker is open
+        except ConnectorError as error:
+            adapter.close()
+            self._log(
+                "connector operation refused",
+                connector,
+                operation=operation,
+                category=error.category.value,
+            )
+            raise BadGatewayError(
+                f"{connector.name}: {error.message}", details=error.to_dict()
+            ) from error
         try:
             if operation == "create_user":
                 external = adapter.create_user(profile, idempotency_key=idempotency_key)
@@ -297,6 +313,7 @@ class ConnectorService:
                 external = adapter.get_user(account.external_id)
             latency_ms = adapter.http.last_latency_ms
         except ConnectorError as error:
+            breaker.record(connector, error)
             self._log(
                 "connector operation failed",
                 connector,
@@ -309,6 +326,7 @@ class ConnectorService:
             ) from error
         finally:
             adapter.close()
+        breaker.record(connector, None)
 
         account = self._save_account(
             connector, employee, account, external.external_id, external.active, operation

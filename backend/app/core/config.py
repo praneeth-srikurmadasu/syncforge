@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     connector_allowed_hosts: list[str] = ["localhost", "127.0.0.1"]
     connector_connect_timeout_seconds: float = Field(default=3.0, gt=0, le=60)
     connector_read_timeout_seconds: float = Field(default=10.0, gt=0, le=120)
+    # Wall-clock limit for one whole operation, across all the requests it makes.
+    connector_operation_timeout_seconds: float = Field(default=30.0, gt=0, le=600)
     # Default endpoints: the local mock services in mock-services/. 127.0.0.1 rather
     # than "localhost": on Windows, localhost tries IPv6 (::1) first, and a refused
     # loopback connection is retried for ~2s before falling back to IPv4.
@@ -78,6 +80,12 @@ class Settings(BaseSettings):
     retry_base_delay_seconds: float = Field(default=2.0, gt=0, le=300)
     retry_max_delay_seconds: float = Field(default=300.0, gt=0, le=86400)
     retry_jitter_ratio: float = Field(default=0.2, ge=0, le=1)
+
+    # ---- Circuit breaker per connector (app/reliability/circuit_breaker.py) ----------
+    # Consecutive outage-type failures (server error, timeout, network) that open it.
+    circuit_failure_threshold: int = Field(default=5, ge=1, le=100)
+    # How long it stays open before one trial call is let through (half-open).
+    circuit_open_seconds: float = Field(default=60.0, gt=0, le=3600)
 
     # ---- Idempotency keys on create requests (app/reliability/idempotency.py) --------
     # How long a stored response can be replayed for the same Idempotency-Key.

@@ -2,6 +2,7 @@
 which Alembic uses to compare models against the database."""
 
 from app.models.base import Base
+from app.models.circuit import CircuitState, ConnectorCircuit, ConnectorRateWindow
 from app.models.connector import (
     Connector,
     ConnectorCredential,
@@ -33,8 +34,11 @@ __all__ = [
     "TRIGGER_EVENT_TYPES",
     "AttemptOutcome",
     "Base",
+    "CircuitState",
     "Connector",
+    "ConnectorCircuit",
     "ConnectorCredential",
+    "ConnectorRateWindow",
     "ConnectorStatus",
     "DeadLetterEvent",
     "DeadLetterReason",

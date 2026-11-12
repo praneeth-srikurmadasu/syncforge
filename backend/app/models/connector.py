@@ -12,7 +12,7 @@ change emails - so updates and deactivations go through this mapping.
 import enum
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     DateTime,
@@ -29,6 +29,9 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+
+if TYPE_CHECKING:
+    from app.models.circuit import ConnectorCircuit
 
 
 class ConnectorStatus(enum.StrEnum):
@@ -77,6 +80,13 @@ class Connector(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     credential: Mapped["ConnectorCredential | None"] = relationship(
         back_populates="connector", uselist=False, cascade="all, delete-orphan"
+    )
+    # Read-only view of the circuit breaker row (written by app/reliability).
+    circuit: Mapped["ConnectorCircuit | None"] = relationship(
+        "ConnectorCircuit",
+        primaryjoin="Connector.id == foreign(ConnectorCircuit.connector_id)",
+        uselist=False,
+        viewonly=True,
     )
 
     def __repr__(self) -> str:

@@ -38,6 +38,9 @@ class ErrorCategory(enum.StrEnum):
     # 409 "idempotency_key_in_use": an earlier attempt with the same idempotency key is
     # still being executed (e.g. it timed out on our side). Retry later to get its result.
     IN_PROGRESS = "in_progress"
+    # Our side refused the call: the connector's circuit breaker is open (see
+    # app/reliability/circuit_breaker.py). retry_after says when it may let calls through.
+    CIRCUIT_OPEN = "circuit_open"
     PERMANENT = "permanent"  # any other 4xx: will not succeed by retrying
     CONFIGURATION = "configuration"  # our side: bad config, disallowed host, old version
 
@@ -49,6 +52,7 @@ RETRYABLE_CATEGORIES = frozenset(
         ErrorCategory.NETWORK,
         ErrorCategory.SERVER,
         ErrorCategory.IN_PROGRESS,
+        ErrorCategory.CIRCUIT_OPEN,
     }
 )
 

@@ -117,6 +117,7 @@ def build_connector(
         allowed_hosts=settings.connector_allowed_hosts,
         connect_timeout=settings.connector_connect_timeout_seconds,
         read_timeout=settings.connector_read_timeout_seconds,
+        operation_timeout=settings.connector_operation_timeout_seconds,
         transport=transport,
     )
     return cls(config=parsed_config, credentials=parsed_credentials, http=http)
