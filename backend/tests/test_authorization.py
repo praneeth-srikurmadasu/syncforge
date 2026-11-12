@@ -58,6 +58,10 @@ ADMIN, MANAGER, VIEWER = (
         (VIEWER, Permission.EVENTS_REPLAY, False),
         (MANAGER, Permission.EVENTS_REPLAY, True),
         (ADMIN, Permission.EVENTS_REPLAY, True),
+        # Phase 7: the audit log shows other people's actions and permission changes.
+        (VIEWER, Permission.AUDIT_READ, False),
+        (MANAGER, Permission.AUDIT_READ, True),
+        (ADMIN, Permission.AUDIT_READ, True),
     ],
 )
 def test_role_permission_matrix(

@@ -20,6 +20,7 @@ from typing import Any
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app import audit
 from app.core.errors import ConflictError, NotFoundError, UnprocessableError
 from app.models import Connector, ConnectorStatus, Organization, Workflow, WorkflowStep
 from app.repositories.workflows import WorkflowRepository
@@ -57,7 +58,24 @@ class WorkflowService:
             trigger_event_type=trigger_event_type,
         )
         workflow.steps = self._build_steps(organization.id, steps)
-        self._commit(lambda: self.workflows.add(workflow))
+
+        def add() -> None:
+            self.workflows.add(workflow)
+            self.session.flush()
+            self._audit(
+                workflow,
+                "workflow.created",
+                {
+                    "name": name,
+                    "trigger_event_type": trigger_event_type,
+                    "steps": [
+                        {"connector_id": st.connector_id, "operation": st.operation.value}
+                        for st in steps
+                    ],
+                },
+            )
+
+        self._commit(add)
         self._log("workflow created", workflow)
         return workflow
 
@@ -65,17 +83,21 @@ class WorkflowService:
         self, organization: Organization, workflow_id: uuid.UUID, changes: dict[str, Any]
     ) -> Workflow:
         workflow = self._get_for_update(organization.id, workflow_id)
+        changed: list[str] = []
         if "name" in changes and changes["name"] != workflow.name:
             self._check_name(organization.id, changes["name"], exclude_id=workflow.id)
             workflow.name = changes["name"]
-        if "description" in changes:
+            changed.append("name")
+        if "description" in changes and changes["description"] != workflow.description:
             workflow.description = changes["description"]
+            changed.append("description")
 
         definition_changed = False
         trigger = changes.get("trigger_event_type")
         if trigger is not None and trigger != workflow.trigger_event_type:
             workflow.trigger_event_type = trigger
             definition_changed = True
+            changed.append("trigger_event_type")
         if changes.get("steps") is not None:
             steps: list[StepInput] = changes["steps"]
             self._check_steps(organization.id, steps)
@@ -84,8 +106,13 @@ class WorkflowService:
                 self.workflows.delete_steps(workflow)
                 self.workflows.add_steps(workflow, self._build_steps(organization.id, steps))
                 definition_changed = True
+                changed.append("steps")
         if definition_changed:
             workflow.version += 1
+        if changed:
+            self._audit(
+                workflow, "workflow.updated", {"changed": changed, "version": workflow.version}
+            )
         self._commit(self.session.flush)
         self._log("workflow updated", workflow, definition_changed=definition_changed)
         return workflow
@@ -110,6 +137,11 @@ class WorkflowService:
                 )
         if workflow.is_active != active:
             workflow.is_active = active
+            self._audit(
+                workflow,
+                "workflow.activated" if active else "workflow.deactivated",
+                {"version": workflow.version},
+            )
             self.session.commit()
             self._log("workflow activated" if active else "workflow deactivated", workflow)
         else:
@@ -117,6 +149,16 @@ class WorkflowService:
         return workflow
 
     # ---- helpers -----------------------------------------------------------------
+
+    def _audit(self, workflow: Workflow, action: str, details: dict[str, Any]) -> None:
+        audit.record(
+            self.session,
+            organization_id=workflow.organization_id,
+            action=action,
+            resource_type="workflow",
+            resource_id=workflow.id,
+            details=details,
+        )
 
     def _get_for_update(self, organization_id: uuid.UUID, workflow_id: uuid.UUID) -> Workflow:
         workflow = self.workflows.get(organization_id, workflow_id, for_update=True)

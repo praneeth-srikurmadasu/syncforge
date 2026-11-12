@@ -25,6 +25,8 @@ from typing import Any
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app import audit
+from app.audit import field_changes
 from app.core.errors import ConflictError, NotFoundError, UnprocessableError
 from app.events.lifecycle import (
     LifecycleEvent,
@@ -91,7 +93,13 @@ class DepartmentService:
         if self.departments.name_taken(organization.id, name):
             raise _conflict("uq_departments_organization_id_lower_name")
         department = Department(organization_id=organization.id, name=name)
-        self._commit(lambda: self.departments.add(department))
+
+        def add() -> None:
+            self.departments.add(department)
+            self.session.flush()
+            self._audit(organization, "department.created", department.id, {"name": name})
+
+        self._commit(add)
         logger.info(
             "department created",
             extra={"organization_id": str(organization.id), "department_id": str(department.id)},
@@ -104,7 +112,11 @@ class DepartmentService:
         department = self.get(organization, department_id)
         if self.departments.name_taken(organization.id, name, exclude_id=department.id):
             raise _conflict("uq_departments_organization_id_lower_name")
+        previous = department.name
         department.name = name
+        self._audit(
+            organization, "department.renamed", department.id, {"from": previous, "to": name}
+        )
         self._commit(self.session.flush)
         return department
 
@@ -118,6 +130,9 @@ class DepartmentService:
                 details={"employee_count": in_use},
             )
         try:
+            self._audit(
+                organization, "department.deleted", department.id, {"name": department.name}
+            )
             self.departments.delete(department)
             self.session.commit()
         except IntegrityError as exc:  # an employee was assigned concurrently
@@ -128,6 +143,18 @@ class DepartmentService:
         logger.info(
             "department deleted",
             extra={"organization_id": str(organization.id), "department_id": str(department_id)},
+        )
+
+    def _audit(
+        self, organization: Organization, action: str, department_id: uuid.UUID, details: dict
+    ) -> None:
+        audit.record(
+            self.session,
+            organization_id=organization.id,
+            action=action,
+            resource_type="department",
+            resource_id=department_id,
+            details=details,
         )
 
     def employee_count(self, organization: Organization, department: Department) -> int:
@@ -182,6 +209,7 @@ class EmployeeService:
             self.employees.add(employee)
             events = [created_event(employee)]
             records = record_events(self.session, events)
+            self._audit("employee.created", employee, field_changes(events[0].changes))
             if before_commit is not None:
                 before_commit(employee)
             self.session.commit()
@@ -229,6 +257,14 @@ class EmployeeService:
 
         try:
             records = record_events(self.session, events)
+            self._audit(
+                "employee.updated",
+                employee,
+                {
+                    **field_changes(diff(before, snapshot(employee))),
+                    "events": [e.type.value for e in events],
+                },
+            )
             self.session.commit()
         except IntegrityError as exc:
             self.session.rollback()
@@ -263,12 +299,19 @@ class EmployeeService:
 
         # Direct reports move up one level, to the terminated employee's manager
         # (or to no manager if the terminated employee had none).
+        moved = 0
         for report in self.employees.direct_reports(org_id, employee.id, for_update=True):
+            moved += 1
             report_before = snapshot(report)
             report.manager_id = employee.manager_id
             events += classify_update(org_id, report.id, diff(report_before, snapshot(report)))
 
         records = record_events(self.session, events)
+        self._audit(
+            "employee.terminated",
+            employee,
+            {"termination_date": last_day, "direct_reports_moved": moved},
+        )
         self.session.commit()
         self.session.refresh(employee)
         self._committed(events, records)
@@ -286,6 +329,7 @@ class EmployeeService:
             )
         if employee.archived_at is None:
             employee.archived_at = datetime.now(UTC)
+            self._audit("employee.archived", employee, {})
             self.session.commit()
             logger.info(
                 "employee archived",
@@ -293,6 +337,16 @@ class EmployeeService:
             )
 
     # ---- rules -----------------------------------------------------------------------
+
+    def _audit(self, action: str, employee: Employee, details: dict[str, Any]) -> None:
+        audit.record(
+            self.session,
+            organization_id=employee.organization_id,
+            action=action,
+            resource_type="employee",
+            resource_id=employee.id,
+            details=details,
+        )
 
     def _get_for_update(self, organization_id: uuid.UUID, employee_id: uuid.UUID) -> Employee:
         employee = self.employees.get(organization_id, employee_id, for_update=True)

@@ -24,6 +24,7 @@ from pydantic import BaseModel, SecretStr
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app import audit
 from app.connectors import registry
 from app.connectors.base import Connector as ConnectorAdapter
 from app.connectors.base import ConnectorSpec, UserProfile
@@ -37,6 +38,7 @@ from app.core.errors import (
     UnprocessableError,
 )
 from app.models import (
+    AuditOutcome,
     Connector,
     ConnectorCredential,
     ConnectorStatus,
@@ -138,6 +140,16 @@ class ConnectorService:
         try:
             self.connectors.add(connector)
             self._store_credentials(connector, spec, secrets)
+            self.session.flush()
+            self._audit(
+                connector,
+                "connector.created",
+                {
+                    "connector_type": connector.connector_type,
+                    "name": name,
+                    "config_keys": sorted(normalized_config),
+                },
+            )
             self.session.commit()
         except IntegrityError as exc:  # concurrent create with the same name
             self.session.rollback()
@@ -161,8 +173,10 @@ class ConnectorService:
         if connector is None:
             raise NotFoundError("Connector not found.", code="connector_not_found")
         spec = self._spec(connector.connector_type)
+        changed: list[str] = []
 
         if name is not None and name != connector.name:
+            changed.append("name")
             if self.connectors.name_taken(organization.id, name, exclude_id=connector.id):
                 raise ConflictError(
                     "A connector with this name already exists.", code="connector_name_taken"
@@ -172,13 +186,17 @@ class ConnectorService:
             normalized_config, secrets = self._validate(
                 spec, connector.config if config is None else config, credentials
             )
+            if normalized_config != connector.config:
+                changed.append("config")
             connector.config = normalized_config
             if secrets is not None:
+                changed.append("credentials")  # rotated; the values are never recorded
                 self._store_credentials(connector, spec, secrets)
             # Settings changed: the old test result no longer proves anything.
             connector.status = ConnectorStatus.PENDING
             connector.last_error_category = None
             connector.last_error_message = None
+        self._audit(connector, "connector.updated", {"changed": changed})
         self.session.commit()
         self.session.refresh(connector)
         self._log("connector updated", connector)
@@ -193,6 +211,7 @@ class ConnectorService:
         connector.status = ConnectorStatus.DISCONNECTED
         connector.last_error_category = None
         connector.last_error_message = None
+        self._audit(connector, "connector.disconnected", {"credentials_deleted": True})
         self.session.commit()
         self.session.refresh(connector)
         self._log("connector disconnected", connector)
@@ -244,6 +263,12 @@ class ConnectorService:
         connector.last_tested_at = tested_at
         connector.last_error_category = error.category.value if error else None
         connector.last_error_message = error.message[:500] if error else None
+        self._audit(
+            connector,
+            "connector.tested",
+            {"error_category": error.category.value, "error_code": error.code} if error else {},
+            outcome=AuditOutcome.FAILURE if error else AuditOutcome.SUCCESS,
+        )
         self.session.commit()
 
     # ---- operations --------------------------------------------------------------
@@ -256,12 +281,14 @@ class ConnectorService:
         operation: str,
         employee_id: uuid.UUID,
         idempotency_key: str | None = None,
+        audited: bool = False,
     ) -> OperationResult:
         """Run one operation for one employee and record the external account link.
 
         `idempotency_key` is passed to `create_user` (the one operation that is not
         naturally idempotent); callers that may repeat a call - the workflow engine -
-        pass the same key every time."""
+        pass the same key every time. `audited` writes a `connector.operation_run` audit
+        entry (manual operations; the workflow engine audits executions itself)."""
         connector = self.get(organization, connector_id)
         employee = EmployeeRepository(self.session).get(organization.id, employee_id)
         if employee is None:
@@ -314,6 +341,19 @@ class ConnectorService:
             latency_ms = adapter.http.last_latency_ms
         except ConnectorError as error:
             breaker.record(connector, error)
+            if audited:
+                self._audit(
+                    connector,
+                    "connector.operation_run",
+                    {
+                        "operation": operation,
+                        "employee_id": employee.id,
+                        "error_category": error.category.value,
+                        "error_code": error.code,
+                    },
+                    outcome=AuditOutcome.FAILURE,
+                )
+                self.session.commit()
             self._log(
                 "connector operation failed",
                 connector,
@@ -327,6 +367,12 @@ class ConnectorService:
         finally:
             adapter.close()
         breaker.record(connector, None)
+        if audited:  # committed with the account link by _save_account
+            self._audit(
+                connector,
+                "connector.operation_run",
+                {"operation": operation, "employee_id": employee.id},
+            )
 
         account = self._save_account(
             connector, employee, account, external.external_id, external.active, operation
@@ -466,6 +512,24 @@ class ConnectorService:
             if for_operation:
                 raise ConflictError(error.message, code=error.code) from error
             raise
+
+    def _audit(
+        self,
+        connector: Connector,
+        action: str,
+        details: dict[str, Any],
+        *,
+        outcome: AuditOutcome = AuditOutcome.SUCCESS,
+    ) -> None:
+        audit.record(
+            self.session,
+            organization_id=connector.organization_id,
+            action=action,
+            resource_type="connector",
+            resource_id=connector.id,
+            outcome=outcome,
+            details=details,
+        )
 
     @staticmethod
     def _log(message: str, connector: Connector, **fields: Any) -> None:

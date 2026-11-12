@@ -45,6 +45,7 @@ import logging
 import random
 import time
 import uuid
+from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -53,10 +54,12 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app import audit
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError, BadGatewayError
 from app.models import (
     AttemptOutcome,
+    AuditOutcome,
     Connector,
     ExecutionStatus,
     IntegrationEvent,
@@ -121,6 +124,7 @@ class EventProcessor:
         rng: random.Random | None = None,
     ) -> None:
         self.session = session
+        audit.set_actor(session, None)  # the engine always acts as the system
         self.settings = settings or get_settings()
         self.policy = RetryPolicy.from_settings(self.settings)
         self.rng = rng or random.Random()  # noqa: S311 - retry jitter, not security
@@ -330,6 +334,31 @@ class EventProcessor:
             return
         execution.status = ExecutionStatus.FAILED if failed else ExecutionStatus.SUCCEEDED
         execution.finished_at = _now()
+        first_failure = next((j for j in execution.jobs if j.status is JobStatus.FAILED), None)
+        audit.record(
+            self.session,
+            organization_id=execution.organization_id,
+            action="workflow.executed",
+            resource_type="workflow",
+            resource_id=execution.workflow_id,
+            outcome=AuditOutcome.FAILURE if failed else AuditOutcome.SUCCESS,
+            details={
+                "execution_id": execution.id,
+                "event_id": event.id,
+                "event_type": event.event_type,
+                "employee_id": event.employee_id,
+                "steps": dict(Counter(j.status.value for j in execution.jobs)),
+                **(
+                    {
+                        "failed_position": first_failure.position,
+                        "connector_id": first_failure.connector_id,
+                        "error_category": first_failure.error_category,
+                    }
+                    if first_failure
+                    else {}
+                ),
+            },
+        )
         self.session.commit()
 
     def _attempt(
@@ -382,6 +411,23 @@ class EventProcessor:
                 job.status = JobStatus.RETRYING
                 job.next_attempt_at = finished + timedelta(seconds=decision.delay_seconds or 0)
                 attempt.next_attempt_at = job.next_attempt_at
+                audit.record(
+                    self.session,
+                    organization_id=job.organization_id,
+                    action="sync.retry_scheduled",
+                    resource_type="synchronization_job",
+                    resource_id=job.id,
+                    outcome=AuditOutcome.FAILURE,  # this attempt failed; another is scheduled
+                    details={
+                        "event_id": event.id,
+                        "connector_id": job.connector_id,
+                        "operation": job.operation,
+                        "attempt": job.attempts,
+                        "error_category": outcome.category,
+                        "error_code": outcome.code,
+                        "next_attempt_at": job.next_attempt_at,
+                    },
+                )
             else:
                 job.status = JobStatus.FAILED
                 if decision.reason == "attempts_exhausted":

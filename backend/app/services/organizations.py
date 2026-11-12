@@ -14,6 +14,7 @@ import uuid
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app import audit
 from app.core.errors import ConflictError, NotFoundError
 from app.models import Organization, OrganizationMembership, OrganizationRole, User
 from app.repositories.organizations import OrganizationRepository
@@ -54,6 +55,15 @@ class OrganizationService:
                     organization=organization, user=creator, role=OrganizationRole.ORG_ADMIN
                 )
             )
+            self.session.flush()
+            audit.record(
+                self.session,
+                organization_id=organization.id,
+                action="organization.created",
+                resource_type="organization",
+                resource_id=organization.id,
+                details={"name": name, "slug": slug, "admin_user_id": creator.id},
+            )
             self.session.commit()
         except IntegrityError as exc:
             # A concurrent request claimed the same slug between our check and insert.
@@ -67,7 +77,16 @@ class OrganizationService:
         return organization
 
     def rename(self, organization: Organization, *, name: str) -> Organization:
+        previous = organization.name
         organization.name = name
+        audit.record(
+            self.session,
+            organization_id=organization.id,
+            action="organization.renamed",
+            resource_type="organization",
+            resource_id=organization.id,
+            details={"from": previous, "to": name},
+        )
         self.session.commit()
         return organization
 
@@ -93,6 +112,7 @@ class OrganizationService:
         membership = OrganizationMembership(organization=organization, user=user, role=role)
         try:
             self.organizations.add_membership(membership)
+            self._audit_member(organization, "member.added", user.id, {"role": role})
             self.session.commit()
         except IntegrityError as exc:
             self.session.rollback()
@@ -116,6 +136,9 @@ class OrganizationService:
             self._ensure_another_admin_remains(organization, membership)
         previous = membership.role
         membership.role = role
+        self._audit_member(
+            organization, "member.role_changed", user_id, {"from_role": previous, "to_role": role}
+        )
         self.session.commit()
         logger.info(
             "member role changed",
@@ -132,11 +155,26 @@ class OrganizationService:
         membership = self._get_member(organization, user_id)
         if membership.role == OrganizationRole.ORG_ADMIN:
             self._ensure_another_admin_remains(organization, membership)
+        role = membership.role
         self.organizations.delete_membership(membership)
+        self._audit_member(organization, "member.removed", user_id, {"role": role})
         self.session.commit()
         logger.info(
             "member removed",
             extra={"organization_id": str(organization.id), "user_id": str(user_id)},
+        )
+
+    def _audit_member(
+        self, organization: Organization, action: str, user_id: uuid.UUID, details: dict
+    ) -> None:
+        """Permission changes are audited: who gave or took which role from whom."""
+        audit.record(
+            self.session,
+            organization_id=organization.id,
+            action=action,
+            resource_type="membership",
+            resource_id=user_id,
+            details={"user_id": user_id, **details},
         )
 
     def _get_member(self, organization: Organization, user_id: uuid.UUID) -> OrganizationMembership:

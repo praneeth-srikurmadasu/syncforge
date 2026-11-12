@@ -226,13 +226,14 @@ def run_operation(
 ) -> OperationResponse:
     """Run one connector operation for one employee, now (manual sync).
 
-    Phase 5 runs the same operations automatically from workflows.
+    Workflows run the same operations automatically. Recorded in the audit log.
     """
     result = ConnectorService(db, settings).run_operation(
         access.organization,
         connector_id,
         operation=payload.operation,
         employee_id=payload.employee_id,
+        audited=True,
     )
     return OperationResponse(**result.__dict__)
 

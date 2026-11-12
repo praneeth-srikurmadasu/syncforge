@@ -24,6 +24,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
+from app import audit
 from app.core.errors import ConflictError, NotFoundError
 from app.models import (
     DeadLetterEvent,
@@ -93,6 +94,19 @@ class DeadLetterService:
         entry.status = DeadLetterStatus.REPLAYED
         entry.replayed_at = now
         entry.replayed_by_user_id = actor.id
+        audit.record(
+            self.session,
+            organization_id=organization.id,
+            action="dead_letter.replayed",
+            resource_type="dead_letter_event",
+            resource_id=entry.id,
+            details={
+                "event_id": event.id,
+                "executions": len(replayable),
+                "steps_reset": reset_steps,
+                "reason": entry.reason,
+            },
+        )
         self.session.commit()
         logger.info(
             "dead-letter event replayed",

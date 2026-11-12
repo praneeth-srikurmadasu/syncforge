@@ -36,9 +36,10 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from app import audit
 from app.connectors.errors import ConnectorError, ErrorCategory
 from app.core.config import Settings
-from app.models import CircuitState, Connector, ConnectorCircuit
+from app.models import AuditOutcome, CircuitState, Connector, ConnectorCircuit
 
 logger = logging.getLogger("syncforge.circuit")
 
@@ -106,11 +107,13 @@ class CircuitBreaker:
                 circuit.open_until = now + self.open_for
                 circuit.trial_started_at = None
                 self._log("circuit opened", connector, circuit, level=logging.WARNING)
+                self._audit(connector, circuit, "connector.circuit_opened", AuditOutcome.FAILURE)
         elif circuit.state is not CircuitState.CLOSED or circuit.consecutive_failures:
             was_closed = circuit.state is CircuitState.CLOSED
             self._close(circuit)
             if not was_closed:
                 self._log("circuit closed", connector, circuit)
+                self._audit(connector, circuit, "connector.circuit_closed")
         self.session.commit()
 
     def reset(self, connector: Connector) -> None:
@@ -119,6 +122,7 @@ class CircuitBreaker:
         if circuit.state is not CircuitState.CLOSED:
             self._close(circuit)
             self._log("circuit closed by a successful connection test", connector, circuit)
+            self._audit(connector, circuit, "connector.circuit_closed", reason="connection_test")
         circuit.consecutive_failures = 0
         self.session.commit()
 
@@ -136,6 +140,29 @@ class CircuitBreaker:
             .with_for_update()
             .execution_options(populate_existing=True)
         ).one()
+
+    def _audit(
+        self,
+        connector: Connector,
+        circuit: ConnectorCircuit,
+        action: str,
+        outcome: AuditOutcome = AuditOutcome.SUCCESS,
+        *,
+        reason: str | None = None,
+    ) -> None:
+        audit.record(
+            self.session,
+            organization_id=connector.organization_id,
+            action=action,
+            resource_type="connector",
+            resource_id=connector.id,
+            outcome=outcome,
+            details={
+                "consecutive_failures": circuit.consecutive_failures,
+                "open_until": circuit.open_until,
+                **({"reason": reason} if reason else {}),
+            },
+        )
 
     @staticmethod
     def _close(circuit: ConnectorCircuit) -> None:

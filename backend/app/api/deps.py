@@ -9,6 +9,7 @@ from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app import audit
 from app.core.database import get_db
 from app.core.errors import AuthenticationError
 from app.models import User
@@ -49,6 +50,7 @@ def get_auth_context(
     user = UserRepository(db).get(claims.user_id)
     if user is None or not user.is_active:
         raise AuthenticationError("Access token is invalid.", code="invalid_token")
+    audit.set_actor(db, user.id)  # audit entries written in this request name the user
 
     return AuthContext(user=user, claims=claims)
 

@@ -11,7 +11,9 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import audit
 from app.models import (
+    AuditOutcome,
     DeadLetterEvent,
     DeadLetterReason,
     DeadLetterStatus,
@@ -74,6 +76,22 @@ def dead_letter(
     )
     session.add(entry)
     session.flush()
+    audit.record(
+        session,
+        organization_id=event.organization_id,
+        action="event.dead_lettered",
+        resource_type="integration_event",
+        resource_id=event.id,
+        outcome=AuditOutcome.FAILURE,
+        details={
+            "dead_letter_id": entry.id,
+            "reason": entry.reason,
+            "connector_id": entry.connector_id,
+            "operation": entry.operation,
+            "error_category": entry.error_category,
+            "attempts": entry.attempts,
+        },
+    )
     logger.warning(
         "event dead-lettered",
         extra={

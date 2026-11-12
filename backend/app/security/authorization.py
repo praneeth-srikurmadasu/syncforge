@@ -41,6 +41,7 @@ class Permission(enum.StrEnum):
     WORKFLOWS_MANAGE = "workflows:manage"
     EVENTS_READ = "events:read"
     EVENTS_REPLAY = "events:replay"  # send dead-lettered events back for processing
+    AUDIT_READ = "audit:read"  # read the organization's audit log
 
 
 _VIEWER = frozenset(
@@ -58,10 +59,16 @@ _VIEWER = frozenset(
 ROLE_PERMISSIONS: dict[OrganizationRole, frozenset[Permission]] = {
     OrganizationRole.VIEWER: _VIEWER,
     # Integration managers configure and operate integrations (connectors, workflows,
-    # replaying failed events), but do not manage people, departments or the
-    # organization itself.
+    # replaying failed events, reading the audit log to investigate), but do not manage
+    # people, departments or the organization itself. Viewers do not read the audit
+    # log: it shows who changed permissions and other people's actions.
     OrganizationRole.INTEGRATION_MANAGER: _VIEWER
-    | {Permission.CONNECTORS_MANAGE, Permission.WORKFLOWS_MANAGE, Permission.EVENTS_REPLAY},
+    | {
+        Permission.CONNECTORS_MANAGE,
+        Permission.WORKFLOWS_MANAGE,
+        Permission.EVENTS_REPLAY,
+        Permission.AUDIT_READ,
+    },
     OrganizationRole.ORG_ADMIN: frozenset(Permission),
 }
 

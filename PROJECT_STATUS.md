@@ -1,6 +1,6 @@
 # SyncForge - Project Status
 
-**Current phase:** 6 complete - awaiting your verification of Part 5 and approval to start Phase 7 (Data integrity, conflict resolution and audit logging)
+**Current phase:** 7 in progress - Data integrity, conflict resolution and audit logging
 **Last updated:** 2026-11-12
 
 | Phase | Status |
@@ -10,8 +10,8 @@
 | 3 - Employee management | Complete |
 | 4 - Connector framework and mock services | Complete |
 | 5 - Workflow engine and event processing | Complete |
-| 6 - Reliability engine and failure recovery | Complete (Part 5 delivered; Windows verification of Part 5 pending) |
-| 7 - Data integrity, conflicts, audit logging | Next (awaiting approval) |
+| 6 - Reliability engine and failure recovery | Complete |
+| 7 - Data integrity, conflicts, audit logging | In progress (Part 1 of 4: audit log) |
 | 8-10 | Not started |
 
 ## Phase 6 progress
@@ -22,15 +22,15 @@
 | 2 | Dead-letter queue (`dead_letter` status, `dead_letter_events` with the copied error), authorized replay of only the failed steps with a fresh retry budget, `events:replay` permission (migration `0007`) | Done | same |
 | 3 | Idempotency keys: `Idempotency-Key: syncforge-job-<id>` on external creates, honoured by the mocks (`in_progress` retryable); `Idempotency-Key` on `POST /employees` stored atomically in `idempotency_records` (migration `0008`) | Done | same |
 | 4 | Circuit breaker per connector (closed / open / half-open, shared in PostgreSQL), `rate_limit_per_minute` per connector (deferral without using an attempt), operation deadline across requests (migration `0009`) | Done | same |
-| 5 | `python -m app.cli purge-expired` (expired revoked tokens and idempotency records); docs/12, docs/13, ADR-0013 to ADR-0016, updates to docs 05, 07-11, 15, 21, README; `infrastructure/scripts/demo_reliability.py` | Done | Linux development workspace; Windows run pending (this delivery) |
+| 5 | `python -m app.cli purge-expired` (expired revoked tokens and idempotency records); docs/12, docs/13, ADR-0013 to ADR-0016, updates to docs 05, 07-11, 15, 21, README; `infrastructure/scripts/demo_reliability.py` | Done | Windows 11 (467 passed, `purge-expired` run) and the Linux workspace |
 
 ### Phase 6 verification (actual results)
 
 - Windows, after each part: `ruff check .` clean (backend and mock-services),
   `alembic check` no drift after migrations `0006`, `0007`, `0008`, `0009`;
   `python -m pytest`: **414, 430, 449, 466 passed**.
-- Linux workspace, Part 5: `ruff check` clean, **467 passed** (one new test for
-  `purge-expired`).
+- Part 5: **467 passed on Windows** (one new test for `purge-expired`);
+  `python -m app.cli purge-expired` deleted 1 expired revoked token.
 - Live runs in the Linux workspace with the API, worker, relay, Redis and the mocks as
   separate processes (docs/12 section 10 has the full output of the final run):
   - transient 503 x2 on payroll: attempts #1, #2 failed, #3 succeeded after ~2 s and ~4 s;
