@@ -83,7 +83,25 @@ npx ng build
 npm run e2e            # needs the whole stack running (frontend/README.md)
 ```
 
-## 5. Flaky tests
+## 5. Continuous integration
+
+`.github/workflows/ci.yml` runs on every push to `main`, on pull requests and on demand:
+
+1. **Backend:** ruff on the backend, mock services and scripts; `alembic upgrade head` on
+   an empty database followed by `alembic check`; the full pytest suite with PostgreSQL 16
+   and Redis 7 as service containers.
+2. **Frontend:** lint, formatting, API-type check, unit tests, production build,
+   `npm audit --omit=dev`.
+3. **Docker stack and browser tests** (after 1 and 2 pass): builds the images, starts the
+   whole stack with Docker Compose (profile `full`), waits for `/ready` through nginx,
+   and runs the 13 Playwright tests against the containers (`SF_WEB`, `SF_API`,
+   `SF_PAYROLL_MOCK` point at port 8080 and the payroll mock). On failure it prints the
+   service logs and uploads the Playwright report.
+
+No secrets are stored in the repository or in GitHub: the containers get throwaway
+passwords and a per-run encryption key.
+
+## 6. Flaky tests
 
 Policy: a test that fails intermittently is treated as a bug (in the test or the code)
 and investigated, never retried until green. The suite has no automatic reruns.
@@ -96,9 +114,8 @@ ran twice in a row, 13 of 13 each time. Earlier browser-test flakiness (ambiguou
 selectors, waiting for rows) was fixed in Phase 8 by scoping selectors and waiting for
 the expected state.
 
-## 6. What is not covered
+## 7. What is not covered
 
 - Load and concurrency limits of the API (benchmarks are sequential; docs/19).
 - Real Slack and Google tenants (all connectors are tested against the local mocks).
 - Browsers other than Chromium; a recorded manual screen-reader pass.
-- Continuous integration: the suites run locally today; GitHub Actions is Phase 10.

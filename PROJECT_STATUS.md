@@ -1,6 +1,6 @@
 # SyncForge - Project Status
 
-**Current phase:** 10 in progress - Docker, CI/CD, deployment, final delivery (plan: `docs/PHASE_10_PLAN.md`). Milestone 1 delivered.
+**Current phase:** 10 in progress - Docker, CI/CD, deployment, final delivery (plan: `docs/PHASE_10_PLAN.md`). Milestones 1-2 delivered.
 **Last updated:** 2026-11-12
 
 | Phase | Status |
@@ -14,17 +14,28 @@
 | 7 - Data integrity, conflicts, audit logging | Complete |
 | 8 - Angular frontend | Complete |
 | 9 - Security, versioning, observability, QA | Complete |
-| 10 - Docker, CI/CD, deployment, final delivery | In progress (milestone 1 of 5) |
+| 10 - Docker, CI/CD, deployment, final delivery | In progress (milestones 1-2 of 5) |
 
 ## Phase 10 progress
 
 | Milestone | Scope | Status |
 |---|---|---|
 | 1 | Docker: backend image (API, worker, relay, migration job), web image (Angular build served by nginx, which forwards API paths), mock-services image, `.dockerignore` files, Compose profile `full` with health checks and start-up order (`docker compose up -d` unchanged); `packaging` added to runtime requirements (missing dependency found by the container check) | Done |
-| 2 | GitHub Actions CI | Next |
-| 3-5 | Deployment guide, remaining documents, final delivery | Planned |
+| 2 | GitHub Actions CI (`.github/workflows/ci.yml`): backend (ruff, migrations + `alembic check`, pytest with PostgreSQL and Redis), frontend (lint, format, API check, unit tests, build, audit), Docker stack with the Playwright browser tests against the containers; no secrets | Done |
+| 3 | Deployment guide | Next |
+| 4-5 | Remaining documents, final delivery | Planned |
 
 ### Phase 10 verification (actual results)
+- Milestone 1, Windows (owner, commit `f30cf29`): `docker compose --profile full up -d
+  --build` built the three images (223 s) and started every service; `api` healthy,
+  worker, relay, mocks and web running.
+- Milestone 2, Linux workspace: `actionlint` 1.7.12 reports no problems. The backend and
+  frontend jobs' steps were run as written from a clean copy without `.env`, with only the
+  CI environment variables: ruff clean (backend 173 files, mock services and scripts 9),
+  migrations 0001-0016 on an empty database and `alembic check` clean, **579 passed**;
+  frontend lint, format, API check, **60 passed**, build, `npm audit --omit=dev` 0. The
+  key command produces a valid Fernet key. The stack job (containers + browser tests)
+  runs on GitHub; its first result is checked after the push.
 - Milestone 1, Linux workspace. Docker Hub is blocked here by network policy, so images
   could not be pulled or built in this workspace. Verified instead: `docker compose config`
   valid with and without `--profile full`, and the rendered environment checked per

@@ -34,7 +34,7 @@ backend tests, 60 frontend unit tests, 13 browser tests).
 | 1 | Dockerfiles (backend, frontend, mock services), `.dockerignore` files, nginx config, Compose profile `full` with health checks and start-up order; README and docs updates |
 | 2 | GitHub Actions: backend (ruff, migrations check, pytest with PostgreSQL and Redis services), frontend (lint, format, API check, unit tests, build), Docker image build; no secrets |
 | 3 | `docs/17-deployment-guide.md` |
-| 4 | Documents 01-04, 20, 22, 23, 24 (ten case studies) |
+| 4 | Documents 01-04, 20, 22, 23, 24 (ten case studies); `CONTRIBUTING.md` and `LICENSE` (both missing; the licence is the owner's choice) |
 | 5 | Clean-machine verification from a fresh clone, final engineering report, final commit and push instructions; then the owner is told that all ten phases are complete |
 
 ## 4. Acceptance criteria

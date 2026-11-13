@@ -14,6 +14,9 @@ All notable changes to SyncForge are recorded here.
   `mock-services/Dockerfile`; `.dockerignore` files.
 - Docker Compose profile `full`: migrations as a one-off job, then API, worker, relay,
   mocks and web, with health checks and start-up order; the web app on port 8080.
+- GitHub Actions CI (`.github/workflows/ci.yml`): backend lint, migrations and tests with
+  PostgreSQL and Redis; frontend lint, API check, tests, build and audit; the Docker stack
+  started with Compose and the Playwright browser tests run against it. No secrets.
 
 #### Fixed
 - `packaging` added to the backend runtime requirements: kombu's Redis transport imports

@@ -1,5 +1,7 @@
 # SyncForge
 
+[![CI](https://github.com/praneeth-srikurmadasu/syncforge/actions/workflows/ci.yml/badge.svg)](https://github.com/praneeth-srikurmadasu/syncforge/actions/workflows/ci.yml)
+
 **Universal Workforce Integration & Synchronization Platform**
 
 SyncForge keeps employee data consistent across HR, Slack, Google Workspace and payroll by
@@ -117,7 +119,7 @@ Real screens of the running application against the local stack (the connectors 
 | Background jobs | Redis 7 (broker), Celery 5.7 (workers) | in use |
 | Frontend | Angular 22, TypeScript, Angular CDK, ECharts 6 | in use |
 | Frontend testing | Vitest, Playwright, axe-core | in use |
-| CI | GitHub Actions | Phase 10 |
+| CI | GitHub Actions (`.github/workflows/ci.yml`) | in use (Phase 10) |
 
 ## Run everything in Docker (one command)
 
@@ -276,6 +278,20 @@ npm run format:check    # formatting
 npx ng build            # production build with size budgets
 npm run e2e             # browser tests (needs the whole stack running)
 ```
+
+### Continuous integration
+
+Every push to `main` and every pull request runs `.github/workflows/ci.yml` on GitHub:
+
+| Job | What it does |
+|---|---|
+| Backend | ruff (backend, mock services, scripts); migrations on an empty PostgreSQL, then `alembic check`; the pytest suite with PostgreSQL and Redis service containers |
+| Frontend | ESLint, Prettier, API types against the OpenAPI snapshot, unit tests, production build, `npm audit --omit=dev` |
+| Docker stack and browser tests | Builds the three images, starts the whole stack with `docker compose --profile full`, runs the Playwright browser tests against it, and uploads the report if anything fails |
+
+No repository secrets are needed: CI uses throwaway passwords for its own containers and
+generates an encryption key per run. Results: the **Actions** tab on GitHub (the badge
+at the top of this file shows the latest run on `main`).
 
 ## Repository layout
 
