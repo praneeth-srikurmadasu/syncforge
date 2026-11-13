@@ -48,6 +48,13 @@ Real screens of the running application against the local stack (the connectors 
 - `/health` (liveness) and `/ready` (database readiness) probes
 - PostgreSQL 16 in Docker Compose, schema managed by Alembic migrations
 - Registration, login with JWT access tokens, `/me`, and logout that truly revokes the token
+- Sign-in protection (Phase 9): limits per network and per account (429 with
+  Retry-After), refusal of common passwords, a 1 MiB request limit, security headers, and
+  an append-only sign-in history ("Recent sign-ins" in Settings)
+- Observability (Phase 9): worker and relay heartbeats, a platform status endpoint, and an
+  organization summary with processing times (docs/18)
+- API versioning (Phase 9): `/api/v2` employee list with cursor pagination beside the
+  unchanged `/api/v1` (docs/08 section 14)
 - Organizations API with four roles (Super Admin, Organization Admin, Integration Manager,
   Viewer), permission checks, and strict organization isolation (outsiders get 404)
 - Member management with a concurrency-safe "at least one admin" rule
@@ -296,5 +303,5 @@ docker-compose.yml  local PostgreSQL and Redis (more services added per phase)
 | [Frontend API integration](docs/PHASE_8_FRONTEND_API_INTEGRATION.md) | Generated types, endpoint map, headers, paging, errors, polling |
 | [Frontend testing](docs/PHASE_8_FRONTEND_TESTING.md) | Test layers, browser suite, accessibility findings and results |
 | [Phase 8 report](docs/PHASE_8_FRONTEND_REPORT.md) | What was delivered, verification, limitations |
-| [Architecture decisions](docs/adr/) | ADR-0001 to ADR-0020 |
+| [Architecture decisions](docs/adr/) | ADR-0001 to ADR-0021 |
 | [Project plan](PROJECT_PLAN.md), [Status](PROJECT_STATUS.md), [Changelog](CHANGELOG.md) | Progress tracking |

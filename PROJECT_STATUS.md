@@ -1,6 +1,6 @@
 # SyncForge - Project Status
 
-**Current phase:** 9 in progress - security, API versioning, observability, QA (plan: `docs/PHASE_9_PLAN.md`). Milestones 1-4 delivered.
+**Current phase:** 9 in progress - security, API versioning, observability, QA (plan: `docs/PHASE_9_PLAN.md`). Milestones 1-5 delivered.
 **Last updated:** 2026-11-12
 
 | Phase | Status |
@@ -13,7 +13,7 @@
 | 6 - Reliability engine and failure recovery | Complete |
 | 7 - Data integrity, conflicts, audit logging | Complete |
 | 8 - Angular frontend | Complete |
-| 9 - Security, versioning, observability, QA | In progress (milestones 1-4 of 7) |
+| 9 - Security, versioning, observability, QA | In progress (milestones 1-5 of 7) |
 | 10 | Not started |
 
 ## Phase 9 progress
@@ -24,10 +24,16 @@
 | 2 | Sign-in and registration rate limits (PostgreSQL fixed windows, hashed subjects, 429 with Retry-After), common-password refusal (registration and CLI), 1 MiB request body limit (413), security headers, CORS headers for `If-Match` / `Idempotency-Key`; UI shows the reasons | Done |
 | 3 | Security events: append-only `security_events` (migration 0014) for sign-ins, failures, sign-outs, registrations and rate-limit refusals (recorded once per window); `GET /auth/activity` (own), `GET /security-events` (Super Admins); "Recent sign-ins" in Settings | Done |
 | 4 | Observability: worker and relay heartbeats (migration 0015), `GET /system/status` (Super Admins), `GET .../summary` with processing durations (p50 / p95 / max, 24 h), `event delivery finished` log line with duration; dashboard uses the summary (48 -> 33 requests per load, measured); `docs/18-observability.md` | Done |
-| 5 | `/api/v2` | Next |
-| 6-7 | Performance, QA | Planned |
+| 5 | `/api/v2/organizations/{id}/employees` with keyset (cursor) pagination, opaque validated cursors, v1 unchanged; versioning policy and v1 -> v2 migration guide (docs/08 section 14); ADR-0021 | Done |
+| 6 | Performance measurements | Next |
+| 7 | QA | Planned |
 
 ### Phase 9 verification (actual results)
+- Milestone 5, Linux workspace: backend lint / format clean, `python -m pytest` **576
+  passed** (12 new in `tests/test_api_v2.py`, including a hire and an archive between two
+  page requests: v2 continued exactly after the last row, v1's offset repeated one);
+  frontend build and `api:check` clean. Live: the demo organization's 14 employees walked
+  in 3 pages of 5 with no repeats.
 - Milestone 4, Linux workspace: backend lint / format clean, `python -m pytest` **564
   passed** (9 new in `tests/test_monitoring.py`, including summary counts equal to the list
   totals); frontend `npm run test:ci` **60 passed**, lint clean, `npm run e2e` **13

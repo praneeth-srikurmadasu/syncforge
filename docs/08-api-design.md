@@ -7,7 +7,7 @@
 
 | Topic | Rule |
 |---|---|
-| Base path | Business APIs live under `/api/v1`. Probes (`/health`, `/ready`) are unversioned. |
+| Base path | Business APIs live under `/api/v1`; `/api/v2` holds only endpoints whose contract changed in a breaking way (section 14). Probes (`/health`, `/ready`) are unversioned. |
 | Format | JSON request and response bodies; UTF-8. |
 | IDs | UUID strings. |
 | Timestamps | ISO 8601 in UTC, e.g. `2026-11-11T12:41:04.146404Z`. |
@@ -185,7 +185,7 @@ sign-in refusals by the per-account limit, sign-outs and the account's creation.
 Events whose account could not be tied to a user (an unknown email, a refusal by the
 per-IP limit) are not in anyone's own history; Super Admins see them below.
 
-## 3b. Observability
+## 3a. Observability
 
 ### `GET /api/v1/organizations/{organization_id}/summary`
 Auth: any member (`org:read`). The dashboard's figures in one request; each count equals
@@ -215,7 +215,7 @@ the relay, outbox backlog, platform-wide event states, events past their process
 lease, open dead letters, and `healthy` / `problems`. Field reference:
 [docs/18 section 3](18-observability.md#3-health-of-background-processing).
 
-## 3a. Platform security events - `/api/v1/security-events`
+## 3b. Platform security events - `/api/v1/security-events`
 
 ### `GET /api/v1/security-events`
 Auth: bearer token of a **Super Admin** (others: `403 superadmin_required`). All security
@@ -752,3 +752,82 @@ Invoke-RestMethod -Method Post "$api/organizations/$($org.id)/conflicts/$($open.
 # Audit trail of employee changes
 Invoke-RestMethod "$api/organizations/$($org.id)/audit-logs?action=employee." -Headers $h
 ```
+
+## 14. API versioning
+
+### Policy
+
+- The version is part of the path (`/api/v1`, `/api/v2`): visible in logs, links and
+  documentation, and easy to route at a proxy.
+- **Additive changes stay in the current version:** new endpoints, new optional query
+  parameters, new response fields, new enum values clients are told to tolerate, new
+  error codes for new situations. Phase 9 added `GET .../summary`, `GET /auth/activity`,
+  `GET /security-events`, `GET /system/status` and the 413 / 429 responses to v1 this way.
+  Clients must ignore unknown response fields.
+- **Breaking changes get a new version:** removing or renaming a field, changing a type or
+  the response envelope, changing the paging model, making an optional parameter required,
+  changing what a status code means.
+- A new version contains only the endpoints that changed. Everything else is served from
+  v1, which stays supported; clients move endpoint by endpoint.
+- Retiring a version (not planned for v1): announce it, send `Deprecation` and `Sunset`
+  response headers (RFC 9745, RFC 8594) with a `Link` to the successor for at least one
+  release cycle, watch the access logs for remaining callers, then remove it.
+
+### `GET /api/v2/organizations/{organization_id}/employees`
+
+The one v2 endpoint. Same permission (`employees:read`) and the same filters as v1
+(`search`, `department_id`, `manager_id`, `employment_status`, `location`, `joined_from`,
+`joined_to`, `include_archived`). The breaking changes:
+
+| | v1 | v2 |
+|---|---|---|
+| Envelope | `{items, total, limit, offset}` | `{data, page: {limit, next_cursor, has_more}}` |
+| Paging | `limit` + `offset` | `limit` + `cursor` (opaque) |
+| Total count | yes | no |
+| Sorts | 6 options | `last_name` (default), `joining_date`, `-created_at` |
+| Rows added or removed while paging | later pages shift: duplicates or gaps | no duplicates or gaps among the other rows |
+
+```
+GET /api/v2/organizations/{org}/employees?limit=2
+200 {"data": [{...Adams...}, {...Baker...}],
+     "page": {"limit": 2, "next_cursor": "eyJzIjoibGFzdF9uYW1lIiwiayI6Wy...", "has_more": true}}
+
+GET /api/v2/organizations/{org}/employees?limit=2&cursor=eyJzIjoibGFzdF9uYW1lIiwiayI6Wy...
+200 {"data": [{...Clark...}, {...Davis...}], "page": {...}}
+```
+
+Items are the same employee representation as in v1.
+
+**How it works (keyset pagination).** Rows are ordered by a key that ends with the unique
+ID (`last_name, first_name, id`), and each page asks for rows strictly after the last key
+seen: `WHERE (last_name, first_name, id) > (:last, :first, :id) ORDER BY ... LIMIT n+1`.
+The extra row tells whether there is a next page, so no count query runs. Rows before the
+position can change without moving the position; and the database does not read and
+discard skipped rows as OFFSET does, so a deep page costs about the same as the first.
+
+**The cursor** is base64url JSON with the sort, the last key and a fingerprint of the
+organization and filters. It is not signed (it grants nothing: every query is still
+limited to the caller's organization), but it is checked: a cursor used with another
+sort, other filters or another organization, or one that does not decode, gets
+`422 invalid_cursor`. Clients treat it as opaque and do not build or edit it.
+
+Errors: `401`, `403`, `404` as v1; `422 validation_error` (`limit` outside 1-100),
+`422 invalid_date_range`, `422 invalid_cursor`.
+
+Tests: `tests/test_api_v2.py`. These include a hire and an archive between two page
+requests, where v2 continues exactly after the last row while v1's offset repeats a row.
+
+### Moving a client from v1 to v2
+
+1. Replace `offset` with the cursor loop: request without `cursor`, then pass
+   `page.next_cursor` back until `page.has_more` is false.
+2. Read rows from `data` instead of `items`.
+3. Where a total was shown, either drop it, show "more available" from `has_more`, or
+   keep using the v1 list (or `GET .../summary`) for the count.
+4. Keep the same filters and sort for the whole walk; start again without a cursor when
+   the user changes them.
+
+The Angular application still uses v1 for its directory: it shows totals and lets people
+jump to a page number, which keyset pagination does not offer. v2 is aimed at
+integrations that walk the whole directory (exports, synchronizations), where stable
+pages matter more than totals.

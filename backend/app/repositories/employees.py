@@ -7,11 +7,13 @@ this module, not something a caller can forget.
 
 import enum
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
+from typing import Any
 
-from sqlalchemy import Select, func, literal, or_, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import Select, func, literal, or_, select, tuple_
+from sqlalchemy.orm import InstrumentedAttribute, Session, selectinload
 
 from app.models import Department, Employee, EmploymentStatus
 
@@ -219,7 +221,56 @@ class EmployeeRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[Employee], int]:
-        conditions = [Employee.organization_id == organization_id]
+        conditions = self._conditions(organization_id, filters)
+        total = self.session.scalar(select(func.count()).select_from(Employee).where(*conditions))
+        items = self.session.scalars(
+            self._with_refs(
+                select(Employee)
+                .where(*conditions)
+                # Employee.id last: a stable order, so pages never overlap or skip rows.
+                .order_by(*_SORT_COLUMNS[sort], Employee.id)
+                .limit(limit)
+                .offset(offset)
+            )
+        )
+        return list(items), total or 0
+
+    def list_after(
+        self,
+        organization_id: uuid.UUID,
+        filters: EmployeeFilters,
+        *,
+        key_columns: Sequence[InstrumentedAttribute[Any]],
+        descending: bool,
+        after: Sequence[Any] | None,
+        limit: int,
+    ) -> tuple[Sequence[Employee], bool]:
+        """Keyset ("seek") pagination for API v2.
+
+        Rows are ordered by `key_columns` (the last one must be unique, e.g. the ID), all in
+        one direction, and the next page starts strictly after the key of the previous
+        page's last row: `(a, b, id) > (:a, :b, :id)`. Unlike OFFSET, rows inserted or
+        removed before the position cannot shift a page (no duplicates or gaps), and the
+        database does not read and discard the skipped rows. Returns (rows, has_more)."""
+        conditions = self._conditions(organization_id, filters)
+        if after is not None:
+            position = tuple_(*key_columns)
+            boundary = tuple_(
+                *[literal(v, type_=c.type) for c, v in zip(key_columns, after, strict=True)]
+            )
+            conditions.append(position < boundary if descending else position > boundary)
+        order = [c.desc() if descending else c.asc() for c in key_columns]
+        rows = list(
+            self.session.scalars(
+                self._with_refs(
+                    select(Employee).where(*conditions).order_by(*order).limit(limit + 1)
+                )
+            )
+        )
+        return rows[:limit], len(rows) > limit
+
+    def _conditions(self, organization_id: uuid.UUID, filters: EmployeeFilters) -> "list[Any]":
+        conditions: list[Any] = [Employee.organization_id == organization_id]
         if not filters.include_archived:
             conditions.append(Employee.archived_at.is_(None))
         if filters.search:
@@ -244,16 +295,4 @@ class EmployeeRepository:
             conditions.append(Employee.joining_date >= filters.joined_from)
         if filters.joined_to is not None:
             conditions.append(Employee.joining_date <= filters.joined_to)
-
-        total = self.session.scalar(select(func.count()).select_from(Employee).where(*conditions))
-        items = self.session.scalars(
-            self._with_refs(
-                select(Employee)
-                .where(*conditions)
-                # Employee.id last: a stable order, so pages never overlap or skip rows.
-                .order_by(*_SORT_COLUMNS[sort], Employee.id)
-                .limit(limit)
-                .offset(offset)
-            )
-        )
-        return list(items), total or 0
+        return conditions

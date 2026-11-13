@@ -909,6 +909,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/organizations/{organization_id}/employees": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Employees V2
+         * @description List employees, paged with a cursor. Same filters as v1; no `offset`, no `total`.
+         *
+         *     Follow `page.next_cursor` until `page.has_more` is false. Employees added or removed
+         *     while paging never cause duplicates or skipped rows among the others.
+         */
+        get: operations["list_employees_v2_api_v2_organizations__organization_id__employees_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -1347,6 +1370,24 @@ export interface components {
              */
             updated_at: string;
         };
+        /** CursorPageInfo */
+        CursorPageInfo: {
+            /** Has More */
+            has_more: boolean;
+            /** Limit */
+            limit: number;
+            /**
+             * Next Cursor
+             * @description Pass as `cursor` to get the next page; null on the last page.
+             */
+            next_cursor: string | null;
+        };
+        /** CursorPage[EmployeeResponse] */
+        CursorPage_EmployeeResponse_: {
+            /** Data */
+            data: components["schemas"]["EmployeeResponse"][];
+            page: components["schemas"]["CursorPageInfo"];
+        };
         /** DeadLetterDetailResponse */
         DeadLetterDetailResponse: {
             /**
@@ -1645,6 +1686,12 @@ export interface components {
          * @enum {string}
          */
         EmployeeSort: "last_name" | "-last_name" | "joining_date" | "-joining_date" | "employee_number" | "-created_at";
+        /**
+         * EmployeeSortV2
+         * @description Sorts that support cursor pagination. A leading "-" means descending.
+         * @enum {string}
+         */
+        EmployeeSortV2: "last_name" | "joining_date" | "-created_at";
         /** EmployeeTerminate */
         EmployeeTerminate: {
             /**
@@ -5706,6 +5753,70 @@ export interface operations {
             };
             /** @description Caller is not a Super Admin */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_employees_v2_api_v2_organizations__organization_id__employees_get: {
+        parameters: {
+            query?: {
+                /** @description Matches name, email or employee number. */
+                search?: string | null;
+                department_id?: string | null;
+                manager_id?: string | null;
+                employment_status?: components["schemas"]["EmploymentStatus"] | null;
+                location?: string | null;
+                joined_from?: string | null;
+                joined_to?: string | null;
+                include_archived?: boolean;
+                sort?: components["schemas"]["EmployeeSortV2"];
+                limit?: number;
+                /** @description `page.next_cursor` from the previous response. Omit for the first page. Must be used with the same filters and sort. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CursorPage_EmployeeResponse_"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Role lacks employees:read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Organization not found, or caller is not a member */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid parameters, or `invalid_cursor` */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

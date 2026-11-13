@@ -31,6 +31,10 @@ All notable changes to SyncForge are recorded here.
   `duration_ms`; `docs/18-observability.md`.
 - Dashboard: one summary request replaces the per-figure total requests (48 -> 33 API
   requests per load, measured); the event pipeline card shows processing times.
+- API v2: `GET /api/v2/organizations/{id}/employees` with keyset (cursor) pagination and
+  a `{data, page}` envelope; cursors are opaque, checked against sort, filters and
+  organization (`422 invalid_cursor`). `/api/v1` unchanged. Versioning policy and migration
+  guide in docs/08 section 14; ADR-0021.
 
 #### Changed
 - CORS preflight allows `If-Match` and `Idempotency-Key` and exposes `ETag` and

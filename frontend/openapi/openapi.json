@@ -959,6 +959,57 @@
         "title": "CredentialSummary",
         "type": "object"
       },
+      "CursorPageInfo": {
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pass as `cursor` to get the next page; null on the last page.",
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "limit",
+          "next_cursor",
+          "has_more"
+        ],
+        "title": "CursorPageInfo",
+        "type": "object"
+      },
+      "CursorPage_EmployeeResponse_": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/EmployeeResponse"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/CursorPageInfo"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ],
+        "title": "CursorPage[EmployeeResponse]",
+        "type": "object"
+      },
       "DeadLetterDetailResponse": {
         "properties": {
           "attempts": {
@@ -1704,6 +1755,16 @@
           "-created_at"
         ],
         "title": "EmployeeSort",
+        "type": "string"
+      },
+      "EmployeeSortV2": {
+        "description": "Sorts that support cursor pagination. A leading \"-\" means descending.",
+        "enum": [
+          "last_name",
+          "joining_date",
+          "-created_at"
+        ],
+        "title": "EmployeeSortV2",
         "type": "string"
       },
       "EmployeeTerminate": {
@@ -8691,6 +8752,228 @@
         "summary": "Get System Status",
         "tags": [
           "monitoring"
+        ]
+      }
+    },
+    "/api/v2/organizations/{organization_id}/employees": {
+      "get": {
+        "description": "List employees, paged with a cursor. Same filters as v1; no `offset`, no `total`.\n\nFollow `page.next_cursor` until `page.has_more` is false. Employees added or removed\nwhile paging never cause duplicates or skipped rows among the others.",
+        "operationId": "list_employees_v2_api_v2_organizations__organization_id__employees_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Matches name, email or employee number.",
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Matches name, email or employee number.",
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "department_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Department Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "manager_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Manager Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "employment_status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/EmploymentStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Employment Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "location",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 150,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Location"
+            }
+          },
+          {
+            "in": "query",
+            "name": "joined_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Joined From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "joined_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Joined To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/EmployeeSortV2",
+              "default": "last_name"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "`page.next_cursor` from the previous response. Omit for the first page. Must be used with the same filters and sort.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 1000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`page.next_cursor` from the previous response. Omit for the first page. Must be used with the same filters and sort.",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_EmployeeResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Role lacks employees:read"
+          },
+          "404": {
+            "description": "Organization not found, or caller is not a member"
+          },
+          "422": {
+            "description": "Invalid parameters, or `invalid_cursor`"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Employees V2",
+        "tags": [
+          "employees (v2)"
         ]
       }
     },
