@@ -125,7 +125,7 @@ flowchart TD
 - **SQL** is built only from SQLAlchemy expressions with bound parameters. Search escapes
   `%` and `_`.
 - **Dependencies** were checked with `pip-audit` (backend and mock services: no findings)
-  and `npm audit --omit=dev` (0). Dependabot keeps watching them.
+  and `npm audit --omit=dev` (0). CI repeats the npm audit on every push.
 
 ## 8. Not implemented
 
