@@ -2,14 +2,14 @@
 # migration job all run from this image with different commands (docker-compose.yml).
 
 # ---- build: install dependencies into a virtual environment --------------------------
-FROM python:3.13-slim AS build
+FROM python:3.15-slim AS build
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1
 RUN python -m venv /opt/venv
 COPY requirements.txt /tmp/requirements.txt
 RUN /opt/venv/bin/pip install -r /tmp/requirements.txt
 
 # ---- runtime -------------------------------------------------------------------------
-FROM python:3.13-slim
+FROM python:3.15-slim
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
