@@ -23,10 +23,14 @@
 | 1 | Docker: backend image (API, worker, relay, migration job), web image (Angular build served by nginx, which forwards API paths), mock-services image, `.dockerignore` files, Compose profile `full` with health checks and start-up order (`docker compose up -d` unchanged); `packaging` added to runtime requirements (missing dependency found by the container check) | Done |
 | 2 | GitHub Actions CI (`.github/workflows/ci.yml`): backend (ruff, migrations + `alembic check`, pytest with PostgreSQL and Redis), frontend (lint, format, API check, unit tests, build, audit), Docker stack with the Playwright browser tests against the containers; no secrets | Done |
 | 3 | `docs/17-deployment-guide.md`: local Docker versus production, components, reference architecture, configuration, secrets and key rotation, database (roles, pooling, TLS, backups), releases (expand-and-contract migrations, rollback), probes, logging, production checklist | Done |
-| 4 | Remaining documents, `CONTRIBUTING.md`, `LICENSE` | Next |
+| 4a | `docs/01`-`04` (overview, requirements, functional and non-functional requirements with evidence), `docs/20` design decisions, `docs/23` future improvements, `CONTRIBUTING.md`; "Developer API" card in Settings linking the API reference (the brief's API documentation page was missing) and `/docs` forwarded by the dev server | Done |
+| 4b | `docs/22` interview preparation, `docs/24` ten case studies; `LICENSE` (owner's choice) | Next |
 | 5 | Final delivery | Planned |
 
 ### Phase 10 verification (actual results)
+- Milestone 4a, Linux workspace: every test name cited in docs/03 checked to exist;
+  frontend build and lint clean after the Settings card; in headless Chrome the card's
+  "Open the API reference" link opened `/docs` (Swagger UI) through the dev server.
 - Milestone 1, Windows (owner, commit `f30cf29`): `docker compose --profile full up -d
   --build` built the three images (223 s) and started every service; `api` healthy,
   worker, relay, mocks and web running.

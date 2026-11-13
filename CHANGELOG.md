@@ -20,6 +20,11 @@ All notable changes to SyncForge are recorded here.
 - `docs/17-deployment-guide.md`: what production needs beyond the local Compose setup,
   configuration, secrets and key rotation, database operations, releases and rollback,
   probes, monitoring, a production checklist.
+- `docs/01-project-overview.md`, `02-requirements.md`, `03-functional-requirements.md`,
+  `04-non-functional-requirements.md`, `20-design-decisions.md`,
+  `23-future-improvements.md`; `CONTRIBUTING.md`.
+- Settings: "Developer API" card opening the interactive API reference; the development
+  server now forwards `/docs`, `/redoc` and `/openapi.json` to the API.
 
 #### Fixed
 - `packaging` added to the backend runtime requirements: kombu's Redis transport imports

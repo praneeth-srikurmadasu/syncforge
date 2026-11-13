@@ -127,6 +127,26 @@ import { RecentSignInsComponent } from './recent-sign-ins.component';
       <sf-recent-sign-ins />
 
       <section class="sf-card">
+        <div class="sf-card__header"><h2 class="sf-card__title">Developer API</h2></div>
+        <div class="sf-card__body api">
+          <p class="sf-muted">
+            Everything this application does goes through the SyncForge REST API. The interactive
+            reference lists every endpoint of <code>/api/v1</code> and <code>/api/v2</code>, with
+            request and response schemas; use your session's token with its Authorize button to try
+            calls.
+          </p>
+          <div class="api-links">
+            <a class="sf-btn" href="/docs" target="_blank" rel="noopener">
+              Open the API reference
+            </a>
+            <a class="sf-btn sf-btn--ghost" href="/openapi.json" target="_blank" rel="noopener">
+              OpenAPI document (JSON)
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section class="sf-card">
         <div class="sf-card__header"><h2 class="sf-card__title">Appearance</h2></div>
         <div class="sf-card__body">
           <div class="themes" role="radiogroup" aria-label="Theme">
@@ -159,6 +179,15 @@ import { RecentSignInsComponent } from './recent-sign-ins.component';
     </div>
   `,
   styles: `
+    .api p {
+      margin: 0 0 var(--sf-space-3);
+      max-width: 70ch;
+    }
+    .api-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--sf-space-2);
+    }
     .sf-page {
       max-width: 900px;
     }

@@ -1,5 +1,27 @@
 {
-  "/api": { "target": "http://127.0.0.1:8000", "secure": false, "changeOrigin": false },
-  "/health": { "target": "http://127.0.0.1:8000", "secure": false },
-  "/ready": { "target": "http://127.0.0.1:8000", "secure": false }
+  "/api": {
+    "target": "http://127.0.0.1:8000",
+    "secure": false,
+    "changeOrigin": false
+  },
+  "/health": {
+    "target": "http://127.0.0.1:8000",
+    "secure": false
+  },
+  "/ready": {
+    "target": "http://127.0.0.1:8000",
+    "secure": false
+  },
+  "/docs": {
+    "target": "http://127.0.0.1:8000",
+    "secure": false
+  },
+  "/redoc": {
+    "target": "http://127.0.0.1:8000",
+    "secure": false
+  },
+  "/openapi.json": {
+    "target": "http://127.0.0.1:8000",
+    "secure": false
+  }
 }

@@ -339,6 +339,11 @@ docker-compose.yml  PostgreSQL and Redis; with --profile full the whole applicat
 | [Reliability and retries](docs/12-reliability-and-retries.md) | Failure classification, backoff and jitter, attempt history, dead-letter queue and replay, circuit breaker, rate limits, timeouts, demo |
 | [Idempotency](docs/13-idempotency.md) | Where duplicates could come from and what stops each; idempotency keys outgoing and incoming |
 | [Data integrity](docs/14-data-integrity.md) | Audit log, optimistic concurrency (ETag / If-Match), source-of-truth policies, reconciliation, conflict resolution |
+| [Project overview](docs/01-project-overview.md) | Problem, capabilities, roles, real versus simulated |
+| [Requirements](docs/02-requirements.md), [functional](docs/03-functional-requirements.md), [non-functional](docs/04-non-functional-requirements.md) | Scope, assumptions, resolved ambiguities; every requirement with status and evidence |
+| [Design decisions](docs/20-design-decisions.md) | Index of the ADRs with their trade-offs, plus smaller decisions |
+| [Future improvements](docs/23-future-improvements.md) | What would come next, by area |
+| [Contributing](CONTRIBUTING.md) | Setup, layering rules, migrations, tests, commit messages |
 | [Deployment guide](docs/17-deployment-guide.md) | Local Docker versus production, components, configuration, secrets, database, releases, probes, checklist |
 | [Testing strategy](docs/16-testing-strategy.md) | Test layers, principles, where each failure scenario is tested, how to run everything |
 | [Phase 9 QA report](docs/PHASE_9_QA_REPORT.md) | Security, versioning, observability and performance work, with all verification results |
