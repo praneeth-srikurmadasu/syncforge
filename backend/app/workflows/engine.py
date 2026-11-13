@@ -35,7 +35,7 @@ before the job is marked succeeded, the re-run finds the link and treats `create
 as already done instead of creating a second account. If it dies (or the call times
 out) *before* the link is recorded, the re-run sends the same idempotency key
 (`syncforge-job-<job id>`), and an API that honours keys returns the account it already
-created instead of creating another (docs/13).
+created instead of creating another (docs/reliability.md).
 
 Reliability building blocks used here live in app/reliability/: retry policy, dead
 letter, rate limit; the circuit breaker wraps the call inside ConnectorService.

@@ -2,8 +2,8 @@
 
 Every external application fails differently (Slack returns SCIM errors, Google returns
 its own JSON, payroll something else). Connectors translate all of them into one
-`ConnectorError` with a `category`, so the rest of SyncForge - and the retry engine in
-Phase 6 - can decide what to do without knowing which application failed.
+`ConnectorError` with a `category`, so the rest of SyncForge - including the retry
+engine - can decide what to do without knowing which application failed.
 
 Only some categories are worth retrying: retrying a wrong password or an invalid
 payload just fails again, while a timeout, a 503 or a 429 often succeeds later.

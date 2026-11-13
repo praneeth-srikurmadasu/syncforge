@@ -44,7 +44,7 @@ consistently across all workers.
   provisioning volumes; at much higher volumes the state would move to Redis.
 
 ## Consequences
-- In the demonstration run (docs/12, section 10), three hires during a Google outage
+- In the demonstration run ([reliability.md](../reliability.md#7-seeing-it-work)), three hires during a Google outage
   produced 5 failing requests before the breaker opened and none while it was open; after
   the open period one trial call closed it and all three completed, with exactly three
   Google accounts.

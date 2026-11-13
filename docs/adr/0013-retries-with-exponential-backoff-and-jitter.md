@@ -50,4 +50,4 @@ forever?
 - Permanent errors reach a person immediately (`test_permanent_failures_are_not_retried`).
 - The attempts endpoint answers "what happened, when, and why" for every step.
 - The live demonstration found a READ COMMITTED race between the relay and the worker's
-  claim, fixed by making due `retrying` events claimable (docs/12, section 9).
+  claim, fixed by making due `retrying` events claimable ([reliability.md](../reliability.md#2-retries-exponential-backoff-with-jitter)).

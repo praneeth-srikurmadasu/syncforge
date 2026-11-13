@@ -30,7 +30,7 @@ How to make repeated creates safe in both directions without distributed transac
   `Idempotent-Replayed: true`; `422` for a reused key with a different body; `409
   idempotency_key_in_use` while the first request runs, classified as retryable
   `in_progress`). Real Slack SCIM and Google Directory do not document the header; this is
-  stated in docs/10 and docs/13.
+  stated in [connectors.md](../connectors.md) and [reliability.md](../reliability.md#6-idempotency).
 - **Incoming:** `POST /employees` accepts an optional `Idempotency-Key`. The response is
   stored in `idempotency_records` in the **same transaction** as the employee
   (`before_commit` hook). Same key and body: stored response; different body: `422

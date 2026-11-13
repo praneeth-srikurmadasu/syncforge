@@ -28,7 +28,7 @@ ADMIN, MANAGER, VIEWER = (
         (ADMIN, Permission.MEMBERS_READ, True),
         (ADMIN, Permission.ORG_UPDATE, True),
         (ADMIN, Permission.MEMBERS_MANAGE, True),
-        # Phase 3: every member reads employees/departments; only admins change them.
+        # every member reads employees/departments; only admins change them.
         (VIEWER, Permission.EMPLOYEES_READ, True),
         (VIEWER, Permission.DEPARTMENTS_READ, True),
         (VIEWER, Permission.EMPLOYEES_WRITE, False),
@@ -39,13 +39,13 @@ ADMIN, MANAGER, VIEWER = (
         (MANAGER, Permission.DEPARTMENTS_MANAGE, False),
         (ADMIN, Permission.EMPLOYEES_WRITE, True),
         (ADMIN, Permission.DEPARTMENTS_MANAGE, True),
-        # Phase 4: everyone sees connectors; integration managers and admins manage them.
+        # everyone sees connectors; integration managers and admins manage them.
         (VIEWER, Permission.CONNECTORS_READ, True),
         (VIEWER, Permission.CONNECTORS_MANAGE, False),
         (MANAGER, Permission.CONNECTORS_READ, True),
         (MANAGER, Permission.CONNECTORS_MANAGE, True),
         (ADMIN, Permission.CONNECTORS_MANAGE, True),
-        # Phase 5: everyone sees workflows and events; integration managers and admins
+        # everyone sees workflows and events; integration managers and admins
         # configure workflows.
         (VIEWER, Permission.WORKFLOWS_READ, True),
         (VIEWER, Permission.EVENTS_READ, True),
@@ -54,15 +54,15 @@ ADMIN, MANAGER, VIEWER = (
         (MANAGER, Permission.EVENTS_READ, True),
         (MANAGER, Permission.EMPLOYEES_WRITE, False),
         (ADMIN, Permission.WORKFLOWS_MANAGE, True),
-        # Phase 6: replaying dead-lettered events makes real external calls.
+        # replaying dead-lettered events makes real external calls.
         (VIEWER, Permission.EVENTS_REPLAY, False),
         (MANAGER, Permission.EVENTS_REPLAY, True),
         (ADMIN, Permission.EVENTS_REPLAY, True),
-        # Phase 7: the audit log shows other people's actions and permission changes.
+        # the audit log shows other people's actions and permission changes.
         (VIEWER, Permission.AUDIT_READ, False),
         (MANAGER, Permission.AUDIT_READ, True),
         (ADMIN, Permission.AUDIT_READ, True),
-        # Phase 7: everyone sees conflicts; managers and admins resolve them; only admins
+        # everyone sees conflicts; managers and admins resolve them; only admins
         # decide which system is authoritative.
         (VIEWER, Permission.CONFLICTS_READ, True),
         (VIEWER, Permission.CONFLICTS_RESOLVE, False),

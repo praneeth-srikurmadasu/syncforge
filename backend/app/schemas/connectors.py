@@ -72,7 +72,7 @@ class ConnectorErrorSummary(BaseModel):
 
 
 class CircuitSummary(BaseModel):
-    """The connector's circuit breaker (docs/12)."""
+    """The connector's circuit breaker (docs/reliability.md)."""
 
     state: CircuitState = Field(
         description="`closed`: normal. `open`: calls paused until `open_until` after "

@@ -13,7 +13,7 @@ Local demo data (see app/seed.py):
     python -m app.cli seed-demo --admin-email you@example.com
 
 The outbox relay (publishes integration events to the message broker; run one or more,
-next to the Celery workers - see docs/09):
+next to the Celery workers - see docs/architecture.md):
 
     python -m app.cli outbox-relay
 

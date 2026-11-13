@@ -48,7 +48,7 @@ business rules, through the event-processing core.
 
 ## Consequences
 - Adding a connector touches only its adapter module, `Settings` (default URL) and tests;
-  section 11 of [docs/10](../10-connector-framework.md) is the checklist.
+  [connectors.md](../connectors.md#7-adding-a-connector) has the checklist.
 - The same parametrized tests run against every adapter, which proves the interface holds.
 - Phase 5 workflows reference connectors by ID and call the interface; Phase 6 reads
   `ConnectorError.retryable` and `retry_after` without knowing the vendor.

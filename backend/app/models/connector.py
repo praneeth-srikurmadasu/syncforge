@@ -45,7 +45,7 @@ class Connector(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "connectors"
     __table_args__ = (
         UniqueConstraint("organization_id", "name"),
-        # Target of composite foreign keys (credentials now; sync jobs in Phase 5).
+        # Target of composite foreign keys (credentials, workflow steps, sync jobs).
         UniqueConstraint("organization_id", "id"),
         Index("ix_connectors_organization_id_connector_type", "organization_id", "connector_type"),
     )

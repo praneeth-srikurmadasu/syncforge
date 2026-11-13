@@ -1,4 +1,4 @@
-"""Phase 9 security controls: sign-in and registration limits, weak-password refusal,
+"""Security controls: sign-in and registration limits, weak-password refusal,
 request body size limit and security headers."""
 
 from collections.abc import Iterator

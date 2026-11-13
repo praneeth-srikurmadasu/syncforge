@@ -49,4 +49,4 @@ engineer to explain and maintain.
 - Contract changes surface as compile errors (`api:types`) rather than runtime bugs.
 - Screens are independent: one page's failure does not affect another, and dashboard
   figures fail one by one.
-- Details: [25 - Frontend](../25-frontend.md).
+- Details: [frontend.md](../frontend.md).

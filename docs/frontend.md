@@ -1,4 +1,4 @@
-# 25 - Frontend (Angular application)
+# Frontend
 
 How the web application in `frontend/` is built: its architecture, components, how it
 calls the API, and how it is tested. Commands for running it are in
@@ -140,7 +140,7 @@ sequenceDiagram
   - the short token lifetime;
   - server-side revocation on logout.
 
-  An HttpOnly cookie session is a future improvement (docs/23).
+  An HttpOnly cookie session is a future improvement ([security](security.md#8-not-implemented)).
 - On start-up, an expired stored token is dropped and a valid one is checked with
   `GET /auth/me`. The shell warns before the token expires. Sign-out calls
   `POST /auth/logout` and clears the session even if that call fails.
@@ -290,8 +290,8 @@ These were left out on purpose and are not hidden behind dead buttons:
 - Change detection is `OnPush` and zoneless.
 - Employee names in event, dead-letter and conflict lists are fetched once per employee
   and cached.
-- Switching the dashboard to `GET .../summary` (Phase 9) cut a dashboard load from 48 to
-  33 API requests, measured (docs/18, section 4).
+- Switching the dashboard to `GET .../summary` cut a dashboard load from 48 to
+  33 API requests, measured.
 
 ## 12. Testing
 
@@ -334,7 +334,7 @@ The 13 tests cover:
 - accessibility in both themes;
 - phone-width layouts.
 
-CI runs the suite against the Docker stack on every push (docs/16).
+CI runs the suite against the Docker stack on every push ([testing](testing.md#continuous-integration)).
 
 **Found by these tests and fixed:**
 - colour contrast below AA in both themes, fixed with token changes and a solid danger

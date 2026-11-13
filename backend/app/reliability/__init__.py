@@ -1,1 +1,1 @@
-"""Reliability engine: retry policy (Phase 6)."""
+"""Reliability engine: retry policy, dead-lettering, circuit breaker, rate limits, idempotency."""

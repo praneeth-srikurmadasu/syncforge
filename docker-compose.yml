@@ -8,7 +8,7 @@
 #                                               http://localhost:8080
 #
 # This is a local development and demonstration setup, not a production deployment
-# (docs/17-deployment-guide.md).
+# (docs/deployment.md).
 
 name: syncforge
 

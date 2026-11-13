@@ -52,7 +52,7 @@ Every mock exposes the same control API (no authentication - local use only):
 
 A **timeout fault still performs the operation** after the delay - like a real API that
 was slow rather than down. The client sees a timeout even though the user was created,
-which is exactly the situation idempotent retries (Phase 6) must handle.
+which is exactly the situation idempotent retries must handle.
 
 PowerShell example:
 

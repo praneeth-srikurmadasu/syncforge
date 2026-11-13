@@ -2,7 +2,7 @@
 
 `ix_employees_organization_id_last_name` (organization_id, last_name) is replaced by
 (organization_id, last_name, first_name, id): the order of the employee list (v1
-`sort=last_name`, v2 keyset pagination). Measured in Phase 9 (docs/19): with the old index
+`sort=last_name`, v2 keyset pagination). Measured (docs/performance.md): with the old index
 PostgreSQL still sorted every page, and the last page by OFFSET fell back to a sequential
 scan.
 

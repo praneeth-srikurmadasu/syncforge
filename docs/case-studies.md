@@ -1,4 +1,4 @@
-# 24 - Engineering case studies
+# Engineering case studies
 
 Ten situations an enterprise integration platform meets, and exactly how SyncForge
 handles each: the request, what happens inside, what is written to the database, what
@@ -9,7 +9,7 @@ described here is what the code does (`backend/app/...`); settings are the defau
 Shared vocabulary:
 
 - **Event:** a row in `integration_events` written with the employee change; delivered
-  by the outbox relay through Redis to a worker (docs/09).
+  by the outbox relay through Redis to a worker (docs/architecture.md).
 - **Execution / job:** one workflow run for an event (`workflow_executions`) and one step
   of it (`synchronization_jobs`); every external call is an attempt
   (`synchronization_attempts`).
@@ -166,7 +166,7 @@ flags any account still active for a terminated person as a **critical** conflic
 
 **Tests.** `test_offboarding_deactivates_the_accounts`,
 `test_terminate_reassigns_direct_reports`,
-`test_a_terminated_person_with_an_active_account_is_critical`; Phase 5 live run where a
+`test_a_terminated_person_with_an_active_account_is_critical`; A live run where a
 hire terminated before processing had its create steps skipped.
 
 **Trade-offs.** Acting on current state instead of the event's snapshot can skip work
@@ -211,7 +211,7 @@ the budget, the event goes to the dead-letter queue (case 10).
 **Tests.** `test_a_transient_failure_is_retried_after_a_backoff_and_then_succeeds`,
 `test_consecutive_outage_failures_open_the_circuit`,
 `test_an_open_circuit_stops_calls_from_every_job`, `test_a_failed_trial_opens_the_circuit_again`.
-Phase 6 live run: Google down during three hires - breaker opened after 5 requests,
+Live run: Google down during three hires - breaker opened after 5 requests,
 one trial after 60 s closed it, three accounts in total.
 
 **Trade-offs.** A bounded retry budget means a long outage needs a person to replay -
@@ -238,7 +238,7 @@ respects them together.
 
 **Tests.** `test_rate_limit_carries_retry_after`,
 `test_rate_limit_waits_at_least_retry_after`, `test_retry_after_is_respected_but_capped`,
-`test_jobs_over_the_limit_wait_without_using_an_attempt`. Phase 6 live run: Slack limited
+`test_jobs_over_the_limit_wait_without_using_an_attempt`. Live run: Slack limited
 to 2 calls per minute, the third hire waited for the next minute and made one attempt.
 
 **Trade-offs.** A fixed one-minute window is simple and shared, but allows up to twice
@@ -273,7 +273,7 @@ returns the first response for a repeat.
 APIs; SyncForge makes processing idempotent instead. Real Slack and Google APIs do not
 document an idempotency header, so a crash between their create and SyncForge storing the
 link would surface as a `conflict` and a dead letter - visible, not a duplicate
-(docs/13 section 3).
+(docs/reliability.md).
 
 ---
 
@@ -333,7 +333,7 @@ worker is running, "No worker has reported in the last 60 seconds".
 
 **Tests.** `test_a_crashed_worker_is_resumed_without_repeating_finished_work`,
 `test_relay_recovery_hands_a_crashed_workers_event_to_the_next_worker`,
-`test_system_status_reports_stale_components_and_stuck_events`. Phase 5 live run: worker
+`test_system_status_reports_stale_components_and_stuck_events`. Live run: worker
 killed (`kill -9`) during a slow Google call, completed by the restarted worker on
 attempt 2 without a duplicate. That run found and fixed a bug (recovery renewed the lease,
 so the next worker skipped the event).
@@ -402,9 +402,8 @@ again.
 **Tests.** `test_replay_reruns_only_what_failed_and_completes`,
 `test_a_replayed_event_gets_a_fresh_retry_budget_and_a_new_entry_if_it_fails_again`,
 `test_an_entry_can_be_replayed_only_once`, `test_simultaneous_replays_of_one_entry_replay_it_once`;
-browser: "a failing step is dead-lettered, then replayed to completion". Phase 6 live run:
-attempt 6 succeeded after replay, Slack and Google untouched; Phase 8: the owner ran the
-same demonstration on Windows.
+browser: "a failing step is dead-lettered, then replayed to completion". Live run:
+attempt 6 succeeded after replay, Slack and Google untouched; the same demonstration was repeated on Windows.
 
 **Trade-offs.** Replays are explicit and audited rather than automatic, so a person
 confirms the cause is fixed; bulk replay after a long outage is a future improvement.

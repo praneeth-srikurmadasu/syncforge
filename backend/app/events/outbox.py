@@ -7,7 +7,7 @@ transaction rolls back, none of them exist; if it commits, all of them do. That 
 whole point of the pattern - there is no window in which the employee changed but the
 event was lost, or an event was published for a change that never happened.
 
-Publishing to the broker happens later and separately (the outbox relay, docs/09).
+Publishing to the broker happens later and separately (the outbox relay, docs/architecture.md).
 """
 
 from sqlalchemy.orm import Session

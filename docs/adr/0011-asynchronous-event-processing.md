@@ -51,7 +51,7 @@ For the guarantee:
   exists". Idempotency keys towards external APIs close it.
   *Update (Phase 6): closed for applications that honour idempotency keys (the mocks do);
   for the real Slack and Google APIs the window produces a visible conflict and a
-  dead-letter entry - see ADR-0015 and docs/13.*
+  dead-letter entry - see ADR-0015 and [reliability.md](../reliability.md#6-idempotency).*
 
 ## Consequences
 - Every step's status is queryable (`GET .../events/{id}`), which Phase 6 (retries, dead

@@ -1,10 +1,10 @@
-# 22 - Interview preparation
+# Interview preparation
 
 How to explain SyncForge confidently. Part 1 is a timed walkthrough for a 10-15 minute
 presentation. Part 2 covers 21 topics, each with a simple explanation, why SyncForge
 needs it, where it is in the code, an example, alternatives, trade-offs, likely questions
 and strong answers. Part 3 has general questions. Every number quoted here was measured
-or counted in this repository (docs/19, docs/16); quote them with their conditions.
+or counted in this repository (docs/performance.md, docs/testing.md); quote them with their conditions.
 
 ---
 
@@ -13,15 +13,15 @@ or counted in this repository (docs/19, docs/16); quote them with their conditio
 | Minute | Say | Show |
 |---|---|---|
 | 0-1 | **Problem.** Employee data lives in many applications; joiners wait for accounts and leavers keep access. SyncForge turns HR changes into reliably processed synchronization events. | README diagram |
-| 1-3 | **Architecture.** A modular monolith: FastAPI API, PostgreSQL as the system of record, a transactional outbox, a relay that publishes to Redis, Celery workers that run configurable workflows through connector adapters. Angular front end. Why a monolith: one transaction boundary, one deployable, independent scaling of workers is still possible. | docs/05 diagram, ADR-0001 |
+| 1-3 | **Architecture.** A modular monolith: FastAPI API, PostgreSQL as the system of record, a transactional outbox, a relay that publishes to Redis, Celery workers that run configurable workflows through connector adapters. Angular front end. Why a monolith: one transaction boundary, one deployable, independent scaling of workers is still possible. | docs/architecture.md diagram, ADR-0001 |
 | 3-5 | **Live: onboarding.** Create an employee; show the event completing with three steps, each attempt with its HTTP status and the linked accounts. | UI: Employees -> Events -> event page |
 | 5-7 | **Reliability.** Inject 503s into the payroll mock; show retries with backoff (2, 4, 8, 16 s), the dead-letter entry with the preserved error, then replay: only the failed step reruns. Mention the circuit breaker and `Retry-After`. | UI: Reliability, Dead letters |
-| 7-8 | **Correctness under duplicates.** At-least-once delivery; atomic claim with a lease; one execution per event and workflow; idempotency keys on external creates. "We never claim exactly-once; we make processing idempotent." | docs/13, case study 6 |
+| 7-8 | **Correctness under duplicates.** At-least-once delivery; atomic claim with a lease; one execution per event and workflow; idempotency keys on external creates. "We never claim exactly-once; we make processing idempotent." | docs/reliability.md, case study 6 |
 | 8-9 | **Data integrity.** Reconcile payroll; a department difference becomes a conflict, not an overwrite; field-level source-of-truth policy; override needs a note. Optimistic concurrency with `If-Match` against lost updates. | UI: Conflicts |
-| 9-10 | **Security and multi-tenancy.** Organization isolation (404 for non-members, composite foreign keys), RBAC with four roles, Argon2id, JWT with revocation, sign-in rate limits, encrypted credentials, append-only audit log and sign-in history. | docs/15 section 11 |
-| 10-11 | **Observability and performance.** Request and correlation IDs, heartbeats and system status, processing percentiles; measured 9-17 ms p50 per request and about 10 events/s per worker on a 2-CPU machine, 1.7x with a second worker; an index changed because of a measurement. | docs/18, docs/19 |
-| 11-12 | **Quality and delivery.** 579 backend tests on real PostgreSQL, 60 unit and 13 browser tests with accessibility checks, Docker Compose for the whole stack, CI running the browser tests against the containers. | docs/16, CI |
-| 12-14 | **Trade-offs and what's next.** Eventual consistency; mocks not real tenants; sequential steps; what I would build next (real connectors with find-before-create, MFA, retention, parallel steps). | docs/23 |
+| 9-10 | **Security and multi-tenancy.** Organization isolation (404 for non-members, composite foreign keys), RBAC with four roles, Argon2id, JWT with revocation, sign-in rate limits, encrypted credentials, append-only audit log and sign-in history. | docs/security.md |
+| 10-11 | **Observability and performance.** Request and correlation IDs, heartbeats and system status, processing percentiles; measured 9-17 ms p50 per request and about 10 events/s per worker on a 2-CPU machine, 1.7x with a second worker; an index changed because of a measurement. | docs/deployment.md, docs/performance.md |
+| 11-12 | **Quality and delivery.** 579 backend tests on real PostgreSQL, 60 unit and 13 browser tests with accessibility checks, Docker Compose for the whole stack, CI running the browser tests against the containers. | docs/testing.md, CI |
+| 12-14 | **Trade-offs and what's next.** Eventual consistency; mocks not real tenants; sequential steps; what I would build next (real connectors with find-before-create, MFA, retention, parallel steps). | the README roadmap |
 | 14-15 | Questions. | |
 
 **One-sentence summary:** "SyncForge is an event-driven workforce synchronization
@@ -61,7 +61,7 @@ Each topic: **What** (simple explanation) · **Why here** · **In the code** · 
 - **What:** tables, keys, constraints and indexes that make invalid states impossible.
 - **Why here:** multi-tenant HR data, lifecycle rules and processing state must stay
   consistent under concurrency.
-- **In the code:** `backend/app/models`, migrations 0001-0016, docs/07 with the ER diagram.
+- **In the code:** `backend/app/models`, migrations 0001-0016, docs/database.md with the ER diagram.
 - **Example:** `employees` has composite foreign keys `(organization_id, manager_id)` so a
   manager from another organization is rejected by the database; check constraints make
   `terminated` require a termination date.
@@ -78,7 +78,7 @@ Each topic: **What** (simple explanation) · **Why here** · **In the code** · 
 - **What:** resource-oriented REST with consistent envelopes, errors and paging.
 - **Why here:** the UI, scripts and future integrations all depend on a stable contract.
 - **In the code:** `app/api/v1`, `app/api/v2`, `app/core/errors.py` (one error envelope
-  with `code`, `message`, `details`, `request_id`), docs/08.
+  with `code`, `message`, `details`, `request_id`), docs/api.md.
 - **Example:** `PATCH /employees/{id}` with `If-Match` returns `412 version_conflict` on a
   stale version; `POST /employees` honours `Idempotency-Key`.
 - **Alternatives:** GraphQL; RPC-style endpoints.
@@ -157,7 +157,7 @@ Each topic: **What** (simple explanation) · **Why here** · **In the code** · 
 - **In the code:** `events/outbox.py`, `events/relay.py` (`FOR UPDATE SKIP LOCKED`),
   ADR-0012.
 - **Example:** with Redis stopped, hires still succeed; when it returns, the relay
-  publishes them (Phase 5: three waiting events published in order).
+  publishes them (live run: three waiting events published in order).
 - **Alternatives:** publish then commit; two-phase commit; change data capture
   (Debezium).
 - **Trade-offs:** an extra process and a small delay; very reliable and simple to test.
@@ -187,7 +187,7 @@ Each topic: **What** (simple explanation) · **Why here** · **In the code** · 
   shared by all workers; 5 consecutive outage failures (server, timeout, network) open
   it for 60 s, then one half-open trial.
 - **Example:** Google down during three hires: open after 5 requests, no calls while open,
-  one trial after 60 s closed it (Phase 6 live run).
+  one trial after 60 s closed it (live run).
 - **Alternatives:** per-process breakers; no breaker.
 - **Trade-offs:** shared state costs a database write per call; per-process state would
   let each worker hammer the service separately.
@@ -310,7 +310,7 @@ Each topic: **What** (simple explanation) · **Why here** · **In the code** · 
   ordering across workers is not guaranteed (safe because steps read current state).
 - **Q:** What is the bottleneck? **A:** At this scale, per-request work in the API and the
   external call latency in workers; the database queries are well under a millisecond
-  except search and the summary, which read a whole organization (docs/19 section 5).
+  except search and the summary, which read a whole organization (docs/performance.md).
 
 ### 19. Worker concurrency
 
@@ -336,7 +336,7 @@ Each topic: **What** (simple explanation) · **Why here** · **In the code** · 
   workers), retries and breaker (outages), dead letters and replay (permanent failures),
   reconciliation (drift).
 - **Example:** worker killed with `kill -9` mid-call; the next worker completed the event
-  on attempt 2 with no duplicate (Phase 5 live run).
+  on attempt 2 with no duplicate (live run).
 - **Alternatives:** manual repair scripts.
 - **Trade-offs:** each mechanism adds state to understand, so each is observable in the
   UI and API.
@@ -348,7 +348,7 @@ Each topic: **What** (simple explanation) · **Why here** · **In the code** · 
 - **Why here:** asynchronous work fails away from the user who caused it.
 - **In the code:** JSON logs with request and correlation IDs (`core/logging.py`),
   `/health`, `/ready`, heartbeats and `GET /system/status`, `GET .../summary` with p50/p95
-  processing times, attempt history per event (docs/18).
+  processing times, attempt history per event (docs/deployment.md).
 - **Example:** with the worker stopped for 70 s, system status reported "No worker has
   reported in the last 60 seconds".
 - **Alternatives:** Prometheus and OpenTelemetry (future).
@@ -361,21 +361,21 @@ Each topic: **What** (simple explanation) · **Why here** · **In the code** · 
 
 ## Part 3 - General questions
 
-**What was the hardest bug?** The READ COMMITTED race in Phase 6: the relay published a
+**What was the hardest bug?** A READ COMMITTED race in the retry path: the relay published a
 due retry while still holding the row, so a fast worker saw `retrying` and skipped it.
 Found in a live run, explained by how PostgreSQL re-evaluates `UPDATE ... WHERE` under
 READ COMMITTED, fixed by making due retries claimable, and pinned with a test that fails
 without the fix.
 
 **What would you do differently?** Start the browser tests and accessibility checks
-earlier (they found real contrast and layout defects only in Phase 8); add a dashboard
+earlier (they found real contrast and layout defects late); add a dashboard
 summary endpoint from the start instead of composing totals from list calls; pin a
 container check earlier, because it found a missing runtime dependency (`packaging`) that
 the development environment hid.
 
 **How do you know it works?** 579 backend tests against real PostgreSQL including
 concurrency races, 60 unit and 13 browser tests, CI with the Docker stack, repeated and
-random-order runs, and a clean-clone run (final engineering report, section 11).
+random-order runs, and a clean-clone run (docs/testing.md).
 
 **What is simulated?** All three external applications are local mocks with realistic
 behaviour and fault injection; marked "Simulated" in the API and UI.
@@ -383,7 +383,7 @@ behaviour and fault injection; marked "Simulated" in the API and UI.
 **How would you scale to 10,000 organizations?** Keep the shared schema with
 `organization_id`-leading indexes, add a pooler, more API instances and workers,
 retention jobs, trigram search, and eventually partition event tables by time; measure at
-the target size before changing anything (docs/19).
+the target size before changing anything (docs/performance.md).
 
 **How do you handle secrets?** Environment variables from a secrets manager in
 production; Fernet-encrypted connector credentials that the API never returns; nothing in

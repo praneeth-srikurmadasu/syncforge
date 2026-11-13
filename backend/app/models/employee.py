@@ -90,7 +90,7 @@ class Employee(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         # Indexes for the list/search/filter queries (always scoped by organization).
         # The directory's default order (v1 sort=last_name, v2 keyset): the full sort key,
         # ending in the unique ID, so pages are read in index order without a sort step
-        # (Phase 9 measurements, docs/19).
+        # (chosen from measurements, docs/performance.md).
         Index(
             "ix_employees_organization_id_name_order",
             "organization_id",
@@ -135,7 +135,7 @@ class Employee(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # Optimistic concurrency: incremented by SQLAlchemy on every UPDATE of the row
     # (`version_id_col`, so the UPDATE also carries `WHERE version = <read version>`).
     # Exposed as the ETag; clients send it back in If-Match, and a stale edit is refused
-    # with 412 instead of silently overwriting someone else's change (docs/14).
+    # with 412 instead of silently overwriting someone else's change (docs/data-integrity.md).
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
 
     __mapper_args__ = {"version_id_col": version}

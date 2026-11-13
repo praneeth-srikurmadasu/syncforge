@@ -1079,7 +1079,7 @@ export interface components {
         CircuitState: "closed" | "open" | "half_open";
         /**
          * CircuitSummary
-         * @description The connector's circuit breaker (docs/12).
+         * @description The connector's circuit breaker (docs/reliability.md).
          */
         CircuitSummary: {
             /** Consecutive Failures */

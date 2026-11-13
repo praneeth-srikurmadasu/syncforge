@@ -5,7 +5,7 @@ An *integration event* is the durable record that something happened to an emplo
 *outbox row* is the instruction "hand this event to the message broker". Both are
 written in the same database transaction as the employee change itself, so a change is
 never committed without its event, and an event never exists for a change that was
-rolled back (the transactional outbox pattern - see docs/09).
+rolled back (the transactional outbox pattern - see docs/architecture.md).
 
 Processing status lives on the event, not in the broker: Redis only carries "please
 process event X". If a message is lost or delivered twice, the database still says

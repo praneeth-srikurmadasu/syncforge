@@ -10,8 +10,8 @@ Rules enforced here:
 * disconnecting deletes the credentials (access is revoked on our side immediately).
 
 External calls are made without holding database row locks, so a slow external API
-cannot block other requests on the same rows. Each operation is synchronous in Phase 4
-(admin-triggered); Phase 5 runs them from background workers.
+cannot block other requests on the same rows. The same operations run from the manual
+operations endpoint and from the workflow engine in the background workers.
 """
 
 import logging

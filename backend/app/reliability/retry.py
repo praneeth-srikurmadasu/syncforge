@@ -1,7 +1,7 @@
 """Retry policy: when to try a failed step again, and how long to wait.
 
 Only failures that may succeed later are retried. The connector framework classifies
-every failure (docs/10); `rate_limited`, `timeout`, `network` and `server` are retryable.
+every failure (docs/connectors.md); `rate_limited`, `timeout`, `network` and `server` are retryable.
 Authentication, authorization, validation, not-found, conflict, permanent and
 configuration failures are not: repeating the same request would fail the same way, and
 hammering an API with bad credentials can get an account locked.

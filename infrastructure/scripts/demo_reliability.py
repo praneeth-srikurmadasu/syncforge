@@ -1,5 +1,5 @@
-"""Live demonstration of SyncForge's reliability engine (Phase 6) and data integrity
-(Phase 7).
+"""Live demonstration of SyncForge's reliability engine and data integrity
+features.
 
 Runs seven scenarios against a locally running SyncForge (API, outbox relay, Celery worker)
 and the mock Slack / Google Workspace / payroll services, injecting failures through the
@@ -18,8 +18,8 @@ mocks' request logs; nothing is simulated inside this script.
     7. Optimistic concurrency: two admins edit the same employee from the same version;
        the second save is refused with 412. Then the audit trail of the whole run.
 
-Prerequisites (see docs/12, section 10): PostgreSQL and Redis running, migrations applied,
-and these four processes started from the repository root:
+Prerequisites (see CONTRIBUTING.md, Development setup): PostgreSQL and Redis running,
+migrations applied, and these four processes started from the repository root:
 
     mock services, API, Celery worker, outbox relay
 

@@ -1,4 +1,4 @@
-"""Performance measurements for SyncForge (Phase 9).
+"""Performance measurements for SyncForge.
 
 Measures, against a locally running stack, and prints a report plus a JSON file:
 
@@ -18,7 +18,7 @@ Every number comes from this run on this machine. The report records the environ
 not production figures: everything runs on one machine, with one worker process.
 
 Prerequisites: PostgreSQL and Redis running, migrations applied, and the mock services,
-API, Celery worker and outbox relay started (docs/09 section 10). Run from the
+API, Celery worker and outbox relay started (CONTRIBUTING.md, Development setup). Run from the
 repository root with the backend's interpreter (it reads DATABASE_URL like the API):
 
     & .\\backend\\.venv\\Scripts\\python.exe infrastructure\\scripts\\benchmark.py

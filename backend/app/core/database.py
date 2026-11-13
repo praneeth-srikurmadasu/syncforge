@@ -1,8 +1,8 @@
 """SQLAlchemy engine and session management.
 
 Synchronous SQLAlchemy is used deliberately: FastAPI runs sync endpoints in a
-thread pool, and the same session code will be reused by Celery workers (Phase 5),
-which are synchronous.
+thread pool, and the same session code is used by the Celery workers, which are
+synchronous.
 """
 
 from collections.abc import Iterator

@@ -91,7 +91,7 @@ def system_status(
         )
     )
     # Claimed by a worker whose lease has run out: the worker died or is far too slow. The
-    # relay re-sends these (docs/09); a growing number means it cannot keep up.
+    # relay re-sends these (docs/architecture.md); a growing number means it cannot keep up.
     stuck = session.scalar(
         select(func.count()).where(
             IntegrationEvent.status == IntegrationEventStatus.PROCESSING,

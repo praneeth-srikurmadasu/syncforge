@@ -1,7 +1,7 @@
 """Version 2 of the public REST API, mounted at /api/v2.
 
 v2 holds only the endpoints whose contract changed in a breaking way; everything else is
-served by v1, which stays supported. See docs/08 section 14 (API versioning).
+served by v1, which stays supported. See docs/api.md (Versioning).
 """
 
 from fastapi import APIRouter

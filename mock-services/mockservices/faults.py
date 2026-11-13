@@ -21,7 +21,7 @@ different body is refused with 422; a repeat that arrives while the first reques
 still running gets 409. Only successful (2xx) responses are stored - a failed request
 may be repeated with the same key. This follows the convention popularised by payment
 APIs (and the IETF "Idempotency-Key" HTTP header draft). The REAL Slack SCIM and Google
-Directory APIs do not document such a header: see docs/13 for what SyncForge relies on
+Directory APIs do not document such a header: see docs/reliability.md for what SyncForge relies on
 there.
 """
 

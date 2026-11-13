@@ -4,27 +4,26 @@ Angular 22 administration application for SyncForge. It talks only to the SyncFo
 every figure and list on screen comes from an existing backend endpoint.
 
 Architecture, pages, API integration and testing are described in
-[`docs/25-frontend.md`](../docs/25-frontend.md).
+[`docs/frontend.md`](../docs/frontend.md).
 
 ## Requirements
 
 - Node.js `^22.22.3`, `^24.15.0` or 26+ (the Angular 22 requirement). Built and tested with 22.23.4; Node 24.18 is also in range
 - The SyncForge API running on `http://127.0.0.1:8000` (see the repository README)
 
-## Run (Windows PowerShell)
+## Run
 
-```powershell
-Set-Location "$HOME\Projects\syncforge\frontend"
+```bash
 npm ci
 npm start
 ```
 
-Open http://localhost:4200. The development server forwards `/api`, `/health` and
-`/ready` to the API (`proxy.conf.json`), so the browser only ever talks to one origin.
+Open http://localhost:4200. The development server forwards `/api`, `/health`, `/ready`,
+`/docs`, `/redoc` and `/openapi.json` to the API (`proxy.conf.json`), so the browser only ever talks to one origin.
 
 ## Checks
 
-```powershell
+```bash
 npx ng build              # production build with size budgets
 npm run test:ci           # unit tests (Vitest)
 npx ng lint               # ESLint + angular-eslint, including template accessibility rules
@@ -40,14 +39,14 @@ organizations through the API, so it never touches your existing data.
 
 One-time setup:
 
-```powershell
+```bash
 npx playwright install chromium
 ```
 
 Start all five processes first (Postgres and Redis in Docker, the mock
 services, the API, the worker, the relay) and `npm start`, then:
 
-```powershell
+```bash
 npm run e2e          # 13 tests, about 3 minutes
 npm run e2e:report   # open the HTML report of the last run
 ```
@@ -68,10 +67,10 @@ and a 390 px phone layout check on the same pages.
 `src/app/core/api/schema.d.ts` is generated from the backend's OpenAPI document and must not
 be edited by hand. After a backend API change, refresh the snapshot and regenerate:
 
-```powershell
-Set-Location "$HOME\Projects\syncforge\backend"
-& "$HOME\Projects\syncforge\backend\.venv\Scripts\python.exe" -c "import json; from app.main import app; open('../frontend/openapi/openapi.json', 'w', encoding='utf-8', newline='\n').write(json.dumps(app.openapi(), indent=2, sort_keys=True) + '\n')"
-Set-Location "$HOME\Projects\syncforge\frontend"
+```bash
+# from backend/, with its virtual environment active
+python -c "import json; from app.main import app; open('../frontend/openapi/openapi.json', 'w', encoding='utf-8', newline='\n').write(json.dumps(app.openapi(), indent=2, sort_keys=True) + '\n')"
+# from frontend/
 npm run api:types
 ```
 

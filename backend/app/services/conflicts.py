@@ -86,7 +86,8 @@ from app.services.employees import EmployeeService
 
 logger = logging.getLogger("syncforge.integrity")
 
-MAX_ACCOUNTS_PER_RUN = 500  # one synchronous run; larger tenants page through (docs/14)
+# One synchronous run; larger tenants would page through (docs/data-integrity.md).
+MAX_ACCOUNTS_PER_RUN = 500
 
 
 @dataclass

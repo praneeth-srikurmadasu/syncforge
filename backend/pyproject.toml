@@ -1,6 +1,6 @@
 [project]
 name = "syncforge-backend"
-version = "0.2.0"
+version = "1.0.0"
 description = "SyncForge API - workforce integration and synchronization platform"
 requires-python = ">=3.12"
 

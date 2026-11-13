@@ -129,7 +129,7 @@ class Connector(ABC):
     ) -> ExternalUser:
         """Create the user. `idempotency_key` is the same for every attempt of the same
         synchronization job, so an API that honours `Idempotency-Key` creates it once
-        even if an attempt timed out after the API had already acted (docs/13)."""
+        even if an attempt timed out after the API had already acted (docs/reliability.md)."""
 
     @abstractmethod
     def update_user(self, external_id: str, profile: UserProfile) -> ExternalUser: ...

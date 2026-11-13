@@ -44,4 +44,4 @@ and paging model), and what that change should be.
   (`test_inserts_and_removals_before_the_position_do_not_shift_later_pages`).
 - The repository has one filter builder shared by both versions, so v1 and v2 cannot
   drift in what they match.
-- Policy and migration guide: docs/08 section 14.
+- Policy and migration guide: [api.md](../api.md#4-versioning).
