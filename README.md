@@ -339,6 +339,7 @@ docker-compose.yml  PostgreSQL and Redis; with --profile full the whole applicat
 | [Reliability and retries](docs/12-reliability-and-retries.md) | Failure classification, backoff and jitter, attempt history, dead-letter queue and replay, circuit breaker, rate limits, timeouts, demo |
 | [Idempotency](docs/13-idempotency.md) | Where duplicates could come from and what stops each; idempotency keys outgoing and incoming |
 | [Data integrity](docs/14-data-integrity.md) | Audit log, optimistic concurrency (ETag / If-Match), source-of-truth policies, reconciliation, conflict resolution |
+| [Deployment guide](docs/17-deployment-guide.md) | Local Docker versus production, components, configuration, secrets, database, releases, probes, checklist |
 | [Testing strategy](docs/16-testing-strategy.md) | Test layers, principles, where each failure scenario is tested, how to run everything |
 | [Phase 9 QA report](docs/PHASE_9_QA_REPORT.md) | Security, versioning, observability and performance work, with all verification results |
 | [Performance and scalability](docs/19-performance-and-scalability.md) | Measured latency, throughput and query plans (environment stated), scaling, hot spots |

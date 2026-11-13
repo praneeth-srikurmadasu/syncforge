@@ -130,7 +130,7 @@ distinct employee in the recent-events table.
 
 - A Prometheus `/metrics` exporter, OpenTelemetry traces. The JSON endpoints above carry
   the same figures without a new dependency; an exporter is a natural addition once a
-  metrics stack exists (Phase 10 deployment guide).
+  metrics stack exists (alert suggestions: docs/17 section 9).
 - Alerting. `system/status` is designed to be polled by an external monitor; SyncForge
   does not send alerts itself.
 - Per-connector latency percentiles over time; attempt durations are stored per call and

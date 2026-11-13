@@ -204,7 +204,7 @@ Details: [connector framework, sections 5 and 7](10-connector-framework.md#5-the
 - Request bodies are limited to `MAX_REQUEST_BODY_BYTES` (default 1 MiB): a larger
   `Content-Length` gets `413 payload_too_large` before the body is read; a chunked body is
   counted while it streams and refused when it passes the limit.
-- TLS termination is a deployment concern (documented in the Phase 10 deployment guide).
+- TLS termination is a deployment concern ([docs/17](17-deployment-guide.md) sections 3 and 11).
 
 ## 9. Authorization model
 
@@ -323,7 +323,7 @@ lock is removed.
 | Invitations for people who are not registered yet | Future improvement |
 | Secrets manager / envelope encryption for the connector key; bulk re-encryption command | Future improvement |
 | OAuth authorization-code ("Connect with Google") flow | Future improvement |
-| Authentication between workers and Redis (Redis password / TLS). Locally Redis has no password and Docker publishes its port on the host (as for PostgreSQL), which is acceptable on a development machine only | Phase 10 deployment guide |
+| Authentication between workers and Redis (Redis password / TLS). Locally Redis has no password and Docker publishes its port on the host (as for PostgreSQL), which is acceptable on a development machine only | Configuration documented in [docs/17](17-deployment-guide.md) section 4 (`rediss://` with a password); not enforced by the code |
 
 ## 11. Phase 9 security review (2026-11-13)
 
@@ -355,4 +355,4 @@ Each control the project requirements list, checked against the code and the tes
 
 Open items that remain (section 10): MFA, secrets manager for the connector key, OAuth
 authorization-code flow, retention jobs, Redis authentication outside development
-(Phase 10 deployment guide), HttpOnly-cookie sessions for the browser.
+(configuration in docs/17), HttpOnly-cookie sessions for the browser.

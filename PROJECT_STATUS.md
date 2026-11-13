@@ -1,6 +1,6 @@
 # SyncForge - Project Status
 
-**Current phase:** 10 in progress - Docker, CI/CD, deployment, final delivery (plan: `docs/PHASE_10_PLAN.md`). Milestones 1-2 delivered.
+**Current phase:** 10 in progress - Docker, CI/CD, deployment, final delivery (plan: `docs/PHASE_10_PLAN.md`). Milestones 1-3 delivered.
 **Last updated:** 2026-11-12
 
 | Phase | Status |
@@ -14,7 +14,7 @@
 | 7 - Data integrity, conflicts, audit logging | Complete |
 | 8 - Angular frontend | Complete |
 | 9 - Security, versioning, observability, QA | Complete |
-| 10 - Docker, CI/CD, deployment, final delivery | In progress (milestones 1-2 of 5) |
+| 10 - Docker, CI/CD, deployment, final delivery | In progress (milestones 1-3 of 5) |
 
 ## Phase 10 progress
 
@@ -22,8 +22,9 @@
 |---|---|---|
 | 1 | Docker: backend image (API, worker, relay, migration job), web image (Angular build served by nginx, which forwards API paths), mock-services image, `.dockerignore` files, Compose profile `full` with health checks and start-up order (`docker compose up -d` unchanged); `packaging` added to runtime requirements (missing dependency found by the container check) | Done |
 | 2 | GitHub Actions CI (`.github/workflows/ci.yml`): backend (ruff, migrations + `alembic check`, pytest with PostgreSQL and Redis), frontend (lint, format, API check, unit tests, build, audit), Docker stack with the Playwright browser tests against the containers; no secrets | Done |
-| 3 | Deployment guide | Next |
-| 4-5 | Remaining documents, final delivery | Planned |
+| 3 | `docs/17-deployment-guide.md`: local Docker versus production, components, reference architecture, configuration, secrets and key rotation, database (roles, pooling, TLS, backups), releases (expand-and-contract migrations, rollback), probes, logging, production checklist | Done |
+| 4 | Remaining documents, `CONTRIBUTING.md`, `LICENSE` | Next |
+| 5 | Final delivery | Planned |
 
 ### Phase 10 verification (actual results)
 - Milestone 1, Windows (owner, commit `f30cf29`): `docker compose --profile full up -d

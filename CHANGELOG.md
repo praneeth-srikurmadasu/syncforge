@@ -17,6 +17,9 @@ All notable changes to SyncForge are recorded here.
 - GitHub Actions CI (`.github/workflows/ci.yml`): backend lint, migrations and tests with
   PostgreSQL and Redis; frontend lint, API check, tests, build and audit; the Docker stack
   started with Compose and the Playwright browser tests run against it. No secrets.
+- `docs/17-deployment-guide.md`: what production needs beyond the local Compose setup,
+  configuration, secrets and key rotation, database operations, releases and rollback,
+  probes, monitoring, a production checklist.
 
 #### Fixed
 - `packaging` added to the backend runtime requirements: kombu's Redis transport imports
