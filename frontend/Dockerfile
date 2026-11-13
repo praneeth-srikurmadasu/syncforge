@@ -2,7 +2,7 @@
 # forwards API calls to the backend so the browser talks to a single origin.
 
 # ---- build ---------------------------------------------------------------------------
-FROM node:22-alpine AS build
+FROM node:25-alpine AS build
 WORKDIR /src
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
