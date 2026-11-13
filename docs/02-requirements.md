@@ -64,7 +64,7 @@ plus the Angular application, Docker images and Compose, CI, and documentation.
 | Point | Resolution |
 |---|---|
 | "Exactly once" is implied by "duplicate event processing is safe" | Designed and documented as at-least-once delivery with idempotent consumers; no exactly-once claim (ADR-0011, docs/09 section 7) |
-| Two phase numberings (master plan 0-11, strict plan 1-10) | The strict ten-phase plan is followed; PROJECT_STATUS tracks it |
+| Two phase numberings (master plan 0-11, strict plan 1-10) | The strict ten-phase plan was followed (CHANGELOG.md, one section per phase) |
 | "Use official APIs and OAuth for real integrations" versus no tenants available | Adapters follow the official API shapes (Slack SCIM, Google Directory, OAuth token exchange) against faithful mocks; clearly marked "Simulated" in API and UI |
 | Angular Material "or a consistent custom component system" | A small custom design system on CSS tokens (ADR-0020), for density and accessibility control |
 | Celery on Windows | Celery's prefork pool does not work on Windows; local runs use `--pool=solo`, containers use prefork (docs/09) |
@@ -76,6 +76,6 @@ plus the Angular application, Docker images and Compose, CI, and documentation.
 
 ## 7. Acceptance
 
-Each phase had acceptance criteria, recorded with evidence in PROJECT_STATUS.md and the
-phase reports (docs/PHASE_8_FRONTEND_REPORT.md, docs/PHASE_9_QA_REPORT.md). The final
-acceptance criteria of the brief are checked in the final engineering report.
+Each phase had acceptance criteria, checked before the phase was closed. The final
+acceptance criteria of the brief are checked in the
+[final engineering report](FINAL_ENGINEERING_REPORT.md).

@@ -41,7 +41,7 @@ smaller decisions that did not need a full record.
 | Security events in their own table | Sign-ins are not organization-scoped; keeps the audit log's tenant model intact | docs/15 section 4b |
 | `/ready` checks only the database | A worker outage must not take the API offline | docs/18 section 3 |
 | Polling instead of WebSockets in the UI | No push channel to operate; screens poll only while visible | ADR-0020 |
-| One backend image for API, worker, relay and migrations | One build; roles differ only in their command | docs/PHASE_10_PLAN.md |
+| One backend image for API, worker, relay and migrations | One build; roles differ only in their command | docs/17 section 2 |
 | nginx serves the web app and forwards API paths | One origin: no CORS, and the API port is not published | docs/17 section 2 |
 | Mock services instead of real tenants, marked as simulated everywhere | Realistic failure testing without paid accounts, without pretending | docs/10 section 1 |
 | Index on the full sort key, decided by measurement | Measured sorts and a sequential scan before; plain index scans after | docs/19 section 4 |

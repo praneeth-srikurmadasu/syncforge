@@ -9,7 +9,6 @@ turning workforce changes (hire, transfer, termination) into reliably processed,
 synchronization events.
 
 > **Status: all 10 phases complete - backend (Phases 2-7), Angular application (Phase 8), security, versioning and observability (Phase 9), Docker, CI and final delivery (Phase 10). Summary: [final engineering report](docs/FINAL_ENGINEERING_REPORT.md).**
-> See [`PROJECT_STATUS.md`](PROJECT_STATUS.md) for exactly what works today.
 
 ## Screenshots
 
@@ -149,8 +148,17 @@ This is a local setup, not a production deployment.
 
 ## Quick start (Windows PowerShell)
 
-Prerequisites: Python 3.13 (`py -3.13`), Docker Desktop, Git.
-Full installation guide for each tool: see the Phase 1 notes in [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
+Prerequisites (official downloads; check each with the command shown):
+
+| Tool | Version used | Download | Check |
+|---|---|---|---|
+| Python | 3.13 | https://www.python.org/downloads/ | `py -3.13 --version` |
+| Node.js (LTS) | 22 | https://nodejs.org/ | `node --version` |
+| Docker Desktop (with Compose) | 29 / Compose v5 | https://www.docker.com/products/docker-desktop/ | `docker compose version` |
+| Git | 2.40+ | https://git-scm.com/downloads | `git --version` |
+
+PostgreSQL and Redis run in Docker, so they need no local installation. On Windows,
+Docker Desktop uses WSL 2.
 
 ```powershell
 # 1. Configuration (from the repository root)
@@ -329,39 +337,32 @@ docker-compose.yml  PostgreSQL and Redis; with --profile full the whole applicat
 
 | Document | Contents |
 |---|---|
-| [System architecture](docs/05-system-architecture.md) | Components, layers, request lifecycle, errors, logging |
-| [Component design](docs/06-component-design.md) | Employee domain model, lifecycle, validation layers, events, concurrency |
-| [Database design](docs/07-database-design.md) | ER diagram, tables, constraints, migrations, transactions |
-| [API design](docs/08-api-design.md) | Conventions, error codes, endpoint reference |
-| [Event-driven architecture](docs/09-event-driven-architecture.md) | Transactional outbox, relay, Redis, Celery workers, leases, delivery guarantees |
-| [Connector framework](docs/10-connector-framework.md) | Interface, adapters, real vs simulated, error normalization, OAuth lifecycle, credential security, adding a connector |
-| [Workflow engine](docs/11-workflow-engine.md) | Workflows, executions, job states, processing sequence, failure boundaries |
-| [Reliability and retries](docs/12-reliability-and-retries.md) | Failure classification, backoff and jitter, attempt history, dead-letter queue and replay, circuit breaker, rate limits, timeouts, demo |
-| [Idempotency](docs/13-idempotency.md) | Where duplicates could come from and what stops each; idempotency keys outgoing and incoming |
-| [Data integrity](docs/14-data-integrity.md) | Audit log, optimistic concurrency (ETag / If-Match), source-of-truth policies, reconciliation, conflict resolution |
-| [Project overview](docs/01-project-overview.md) | Problem, capabilities, roles, real versus simulated |
-| [Requirements](docs/02-requirements.md), [functional](docs/03-functional-requirements.md), [non-functional](docs/04-non-functional-requirements.md) | Scope, assumptions, resolved ambiguities; every requirement with status and evidence |
-| [Design decisions](docs/20-design-decisions.md) | Index of the ADRs with their trade-offs, plus smaller decisions |
-| [Future improvements](docs/23-future-improvements.md) | What would come next, by area |
-| [Interview preparation](docs/22-interview-preparation.md) | A timed 10-15 minute walkthrough, 21 topics with questions and answers |
-| [Case studies](docs/24-case-studies.md) | Ten real situations end to end: onboarding, transfer, termination, outage, 429, duplicates, conflicts, worker crash, expired credentials, replay |
-| [Contributing](CONTRIBUTING.md) | Setup, layering rules, migrations, tests, commit messages |
-| [Deployment guide](docs/17-deployment-guide.md) | Local Docker versus production, components, configuration, secrets, database, releases, probes, checklist |
-| [Testing strategy](docs/16-testing-strategy.md) | Test layers, principles, where each failure scenario is tested, how to run everything |
-| [Final engineering report](docs/FINAL_ENGINEERING_REPORT.md) | What was built, verification results (clean clone, CI), performance, known limitations, deployment and publication |
-| [Phase 9 QA report](docs/PHASE_9_QA_REPORT.md) | Security, versioning, observability and performance work, with all verification results |
-| [Performance and scalability](docs/19-performance-and-scalability.md) | Measured latency, throughput and query plans (environment stated), scaling, hot spots |
-| [Observability](docs/18-observability.md) | Logs and IDs, heartbeats, system status, organization summary and processing durations, investigating a failure |
-| [Security design](docs/15-security-design.md) | Auth flow, JWT lifecycle, passwords, secrets, roles, tenant isolation, connector credentials, SSRF |
-| [Troubleshooting](docs/21-troubleshooting.md) | Investigating failed requests and synchronizations, connector, worker, test and Windows issues |
-| [Frontend plan](docs/PHASE_8_FRONTEND_PLAN.md) | Screen-to-endpoint map, permission matrix, features the API does not support |
-| [Frontend architecture](docs/PHASE_8_FRONTEND_ARCHITECTURE.md) | Layers, routing, session, authorization, state, errors, design system |
-| [Frontend components](docs/PHASE_8_FRONTEND_COMPONENTS.md) | Shared components and every page with the API calls behind it |
-| [Frontend API integration](docs/PHASE_8_FRONTEND_API_INTEGRATION.md) | Generated types, endpoint map, headers, paging, errors, polling |
-| [Frontend testing](docs/PHASE_8_FRONTEND_TESTING.md) | Test layers, browser suite, accessibility findings and results |
-| [Phase 8 report](docs/PHASE_8_FRONTEND_REPORT.md) | What was delivered, verification, limitations |
+| [Final engineering report](docs/FINAL_ENGINEERING_REPORT.md) | Start here: what was built, verification results (clean clone, CI), performance, known limitations, deployment |
+| [01 Project overview](docs/01-project-overview.md) | Problem, capabilities, roles, real versus simulated |
+| [02 Requirements](docs/02-requirements.md), [03 functional](docs/03-functional-requirements.md), [04 non-functional](docs/04-non-functional-requirements.md) | Scope, assumptions, resolved ambiguities; every requirement with status and evidence |
+| [05 System architecture](docs/05-system-architecture.md) | Components, request lifecycle, deployment diagram, index of all diagrams |
+| [06 Component design](docs/06-component-design.md) | Employee domain model, lifecycle, validation layers, events, concurrency |
+| [07 Database design](docs/07-database-design.md) | ER diagram, tables, constraints, migrations, transactions |
+| [08 API design](docs/08-api-design.md) | Conventions, error codes, endpoint reference, API versioning |
+| [09 Event-driven architecture](docs/09-event-driven-architecture.md) | Transactional outbox, relay, Redis, Celery workers, leases, delivery guarantees |
+| [10 Connector framework](docs/10-connector-framework.md) | Interface, adapters, real versus simulated, error normalization, OAuth, credential security, adding a connector |
+| [11 Workflow engine](docs/11-workflow-engine.md) | Workflows, executions, job states, processing sequence, failure boundaries |
+| [12 Reliability and retries](docs/12-reliability-and-retries.md) | Failure classification, backoff and jitter, dead-letter queue and replay, circuit breaker, rate limits, timeouts, demo |
+| [13 Idempotency](docs/13-idempotency.md) | Where duplicates could come from and what stops each |
+| [14 Data integrity](docs/14-data-integrity.md) | Audit log, optimistic concurrency, source-of-truth policies, reconciliation, conflicts |
+| [15 Security design](docs/15-security-design.md) | Auth flow, JWT lifecycle, passwords, secrets, roles, tenant isolation, sign-in limits, security review |
+| [16 Testing strategy](docs/16-testing-strategy.md) | Test layers, where each failure scenario is tested, CI, how to run everything |
+| [17 Deployment guide](docs/17-deployment-guide.md) | Local Docker versus production, configuration, secrets, database, releases, checklist |
+| [18 Observability](docs/18-observability.md) | Logs and IDs, heartbeats, system status, organization summary, investigating a failure |
+| [19 Performance and scalability](docs/19-performance-and-scalability.md) | Measured latency, throughput and query plans, scaling, hot spots |
+| [20 Design decisions](docs/20-design-decisions.md) | Index of the ADRs with their trade-offs, plus smaller decisions |
+| [21 Troubleshooting](docs/21-troubleshooting.md) | Failed requests and synchronizations, connector, worker, test and Windows issues |
+| [22 Interview preparation](docs/22-interview-preparation.md) | A timed 10-15 minute walkthrough, 21 topics with questions and answers |
+| [23 Future improvements](docs/23-future-improvements.md) | What would come next, by area |
+| [24 Case studies](docs/24-case-studies.md) | Ten situations end to end, from onboarding to dead-letter replay |
+| [25 Frontend](docs/25-frontend.md) | Angular architecture, routing, session, state, API integration, pages, design system, testing |
 | [Architecture decisions](docs/adr/) | ADR-0001 to ADR-0021 |
-| [Project plan](PROJECT_PLAN.md), [Status](PROJECT_STATUS.md), [Changelog](CHANGELOG.md) | Progress tracking |
+| [Contributing](CONTRIBUTING.md), [Changelog](CHANGELOG.md) | How to work on the code; what changed in each phase |
 
 ## Licence
 

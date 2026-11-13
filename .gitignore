@@ -42,8 +42,7 @@ logs/
 
 # ---- Editors and OS
 .idea/
-.vscode/*
-!.vscode/extensions.json
+.vscode/
 Thumbs.db
 desktop.ini
 .DS_Store

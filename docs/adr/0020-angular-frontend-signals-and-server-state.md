@@ -49,5 +49,4 @@ engineer to explain and maintain.
 - Contract changes surface as compile errors (`api:types`) rather than runtime bugs.
 - Screens are independent: one page's failure does not affect another, and dashboard
   figures fail one by one.
-- Details: [PHASE_8_FRONTEND_ARCHITECTURE.md](../PHASE_8_FRONTEND_ARCHITECTURE.md),
-  [PHASE_8_FRONTEND_API_INTEGRATION.md](../PHASE_8_FRONTEND_API_INTEGRATION.md).
+- Details: [25 - Frontend](../25-frontend.md).

@@ -120,6 +120,6 @@ documented. Test names refer to `backend/tests/` unless marked "browser" (Playwr
 
 | ID | Requirement | Status | Evidence |
 |---|---|---|---|
-| K1 | The 16 pages of the brief (login, dashboard, employees, details, integrations, connector configuration, workflow builder and history, events, failed synchronizations, dead letters, conflicts, audit log, API documentation, users and roles, settings) | Done | docs/PHASE_8_FRONTEND_COMPONENTS.md; browser suite. API documentation: the "Developer API" card in Settings opens the interactive reference (`/docs`, added in Phase 10, where this gap was found) |
+| K1 | The 16 pages of the brief (login, dashboard, employees, details, integrations, connector configuration, workflow builder and history, events, failed synchronizations, dead letters, conflicts, audit log, API documentation, users and roles, settings) | Done | docs/25 section 9; browser suite. API documentation: the "Developer API" card in Settings opens the interactive reference (`/docs`, added in Phase 10, where this gap was found) |
 | K2 | Loading, empty and error states; validation; confirmations; notifications; search, filters, pagination; responsive | Done | shared components; browser phone-layout test |
-| K3 | No decorative controls; real backend data only | Done | docs/PHASE_8_FRONTEND_REPORT.md section 2 |
+| K3 | No decorative controls; real backend data only | Done | docs/25 sections 1 and 9 |

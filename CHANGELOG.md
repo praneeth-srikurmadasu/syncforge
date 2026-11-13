@@ -4,6 +4,28 @@ All notable changes to SyncForge are recorded here.
 
 ## [Unreleased]
 
+### Repository clean-up (after Phase 10)
+
+#### Added
+- `docs/25-frontend.md`: one frontend document (architecture, routing, session,
+  authorization, state, API integration, pages, design system, testing), merged from
+  the Phase 8 working documents and updated to the current state.
+- README: a prerequisites table with official download links, and the documentation
+  index in document order.
+
+#### Changed
+- The full list of known limitations moved from `PROJECT_STATUS.md` into
+  `docs/FINAL_ENGINEERING_REPORT.md`, section 14.
+- `.vscode/` folders are ignored.
+
+#### Removed
+- `PROJECT_PLAN.md` and `PROJECT_STATUS.md`. Their content is in the final engineering
+  report, this changelog and the numbered documents.
+- The phase working documents `docs/PHASE_8_FRONTEND_*` (6), `docs/PHASE_9_PLAN.md`,
+  `docs/PHASE_9_QA_REPORT.md` and `docs/PHASE_10_PLAN.md`.
+- Seven empty placeholder folders (`.gitkeep` only), two screenshots no document used,
+  and the Angular CLI's `frontend/.vscode` editor settings.
+
 ### Phase 10 - Docker, CI/CD, deployment and final delivery
 
 #### Added

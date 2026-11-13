@@ -375,7 +375,7 @@ the development environment hid.
 
 **How do you know it works?** 579 backend tests against real PostgreSQL including
 concurrency races, 60 unit and 13 browser tests, CI with the Docker stack, repeated and
-random-order runs, and live runs recorded in PROJECT_STATUS.md.
+random-order runs, and a clean-clone run (final engineering report, section 11).
 
 **What is simulated?** All three external applications are local mocks with realistic
 behaviour and fault injection; marked "Simulated" in the API and UI.

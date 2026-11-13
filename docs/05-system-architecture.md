@@ -233,7 +233,7 @@ the API, worker, relay and migration job.
 | Diagram | Where |
 |---|---|
 | High-level architecture | [01 Project overview](01-project-overview.md), section 1 above |
-| Component architecture | Section 1 above; domain model in [06](06-component-design.md) 2.1; connector classes in [10](10-connector-framework.md) 2; frontend layers in [PHASE_8_FRONTEND_ARCHITECTURE](PHASE_8_FRONTEND_ARCHITECTURE.md) 3 |
+| Component architecture | Section 1 above; domain model in [06](06-component-design.md) 2.1; connector classes in [10](10-connector-framework.md) 2; frontend layers in [25](25-frontend.md) 3 |
 | Employee onboarding sequence | [24 Case studies](24-case-studies.md), case 1 |
 | Employee termination sequence | [06](06-component-design.md) 2.5 |
 | Event processing sequence | [09](09-event-driven-architecture.md) 2-4, [11](11-workflow-engine.md) 4 |
@@ -241,4 +241,4 @@ the API, worker, relay and migration job.
 | Database relationships | [07](07-database-design.md) section 1 |
 | Deployment architecture | Section 8 above (local), [17](17-deployment-guide.md) section 3 (production reference) |
 | Request lifecycle | Section 3 above |
-| Authentication (sign-in, token lifecycle) | [PHASE_8_FRONTEND_ARCHITECTURE](PHASE_8_FRONTEND_ARCHITECTURE.md) 5, [15](15-security-design.md) |
+| Authentication (sign-in, token lifecycle) | [25](25-frontend.md) 5, [15](15-security-design.md) |

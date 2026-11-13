@@ -3,7 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 /**
  * End-to-end tests against the real stack: the Angular dev server (npm start), the API,
  * the worker, the outbox relay and the mock services must already be running (see
- * docs/PHASE_8_FRONTEND_TESTING.md). Each test signs up its own user and organization
+ * docs/25-frontend.md, section 12). Each test signs up its own user and organization
  * through the API, so runs do not depend on, or disturb, existing data.
  */
 export default defineConfig({

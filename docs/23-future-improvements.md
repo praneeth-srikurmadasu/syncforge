@@ -1,7 +1,7 @@
 # 23 - Future improvements
 
 What would come next, collected from the known limitations recorded during the project
-(PROJECT_STATUS.md, docs/15 section 10, docs/19 section 5, the phase reports). Ordered by
+(final engineering report section 14, docs/15 section 10, docs/19 section 5). Ordered by
 value within each group. None of these is implemented.
 
 ## 1. Real integrations

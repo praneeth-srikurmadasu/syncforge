@@ -224,7 +224,6 @@ on empty databases.
   progress for the same branch.
 
 Test layers and what each one covers: [16 - Testing strategy](16-testing-strategy.md).
-The Phase 9 QA report is in [PHASE_9_QA_REPORT.md](PHASE_9_QA_REPORT.md).
 
 ## 12. Performance results
 
@@ -259,25 +258,57 @@ tests that verify them:
 
 ## 14. Known limitations
 
-- All connectors are simulated. The browser OAuth authorization-code flow is not
-  implemented, and real tenants have not been tested.
-- The real Slack and Google APIs do not document an idempotency header. A crash between
-  an external create and storing the link becomes a visible dead-letter `conflict`, not a
-  silent duplicate. "Find before create" is not implemented.
-- Dead-letter replay is one entry at a time (no bulk replay). Event, attempt and outbox
-  tables are not pruned automatically, and `purge-expired` must be scheduled by the
-  operator.
-- Rate-limit windows are fixed one-minute windows (up to twice the limit across a
-  boundary). Breaker and rate-limit state are PostgreSQL rows, which suits provisioning
-  volumes.
-- Workers do not guarantee per-employee ordering. Steps read the current state, so this
-  is safe today.
+**Integrations**
+- All three connectors are simulated and were verified against local mocks only. Real
+  Slack and Google need real tenants and, for Google, the JWT-bearer grant (docs/10,
+  section 1).
+- OAuth tokens are cached per process. The browser authorization-code flow is not
+  implemented.
+- The mocks honour idempotency keys, but the real Slack SCIM and Google Directory APIs do
+  not document such a header. Against them, a crash between the external create and
+  storing the link produces a `conflict` and a dead-letter entry: visible, not a silent
+  duplicate. "Find before create" (adopting an existing account by email) is not
+  implemented (docs/13, section 3).
 - The SSRF allowlist matches host names, not resolved IP addresses.
-- Substring search and the organization summary scan the whole organization. They are
-  fine at 10,000 employees but are the first hot spots (docs/19, section 5).
-- The Docker Compose setup is for local use and is not a production deployment.
 
-The complete list is in `PROJECT_STATUS.md` under "Known limitations".
+**Processing and reliability**
+- A long outage dead-letters work after the retry budget: about 30 s of backoff, longer
+  with `Retry-After` or an open circuit. The entries are then replayed one at a time,
+  because there is no bulk replay.
+- Circuit-breaker and rate-limit state are PostgreSQL rows, updated on every external
+  call. That is fine at provisioning volumes. The rate limit is a fixed one-minute
+  window, so up to twice the limit can pass across a window boundary.
+- Several workers do not guarantee per-employee ordering. Steps read the current state,
+  so this is safe today.
+- Reconciliation runs on demand or on the operator's schedule, covering up to 500
+  accounts and seven fields per run. Conflicts are found when it runs, not instantly.
+
+**Data and retention**
+- Event, outbox, execution, attempt, dead-letter, audit and conflict history are never
+  pruned. `python -m app.cli purge-expired` (for expired revoked tokens and
+  idempotency records) must be scheduled by the operator; SyncForge has no built-in scheduler.
+- Optimistic concurrency covers employees. Clients that send no `If-Match` still get
+  last-write-wins (the web application always sends it).
+- Termination is final. Rehiring means creating a new employee record.
+- Substring search and the organization summary read the whole organization. They take
+  38-40 ms at 10,000 employees on the 2-CPU test machine (options in docs/19, section 5).
+
+**Access**
+- Members can be added only after they have registered. There are no email invitations.
+- Passwords need at least 8 characters and pass a common-password check: a bundled list
+  of 2,087 entries, not a full breach corpus. There is no MFA. NIST SP 800-63B-4
+  recommends 15 or more characters when a password is the only factor.
+- There are no refresh tokens, so users sign in again after 30 minutes. The browser keeps
+  the bearer token in `sessionStorage`, not in an HttpOnly cookie.
+
+**Testing and deployment**
+- One unidentified intermittent backend test failure was seen once, at the end of
+  Phase 5 (1 of 15 full runs, test name not captured). It has not reappeared: the suite
+  passed 5 times in order and 3 times in random order in the Phase 9 quality pass, and
+  again in the clean-clone run.
+- Browser tests run in Chromium only. No full manual screen-reader pass has been
+  recorded.
+- The Docker Compose setup is for local use and is not a production deployment.
 
 ## 15. Deployment instructions
 
@@ -294,8 +325,8 @@ The complete list is in `PROJECT_STATUS.md` under "Known limitations".
 GitHub `main` has 48 commits, from `f476de2` (2026-11-11, environment set-up) to
 `0784cd1` (2026-11-13, case studies and interview preparation). The commits follow the
 conventional prefixes (`feat`, `fix`, `docs`, `test`, `perf`, `build`, `ci`, `chore`),
-one or more per milestone. This report and the licence are the final commit. See
-`git log --oneline`.
+one or more per milestone. The last two commits add this report and the licence, then
+remove the working documents. See `git log --oneline`.
 
 ## 17. GitHub publication
 

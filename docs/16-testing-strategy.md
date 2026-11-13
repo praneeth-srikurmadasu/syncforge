@@ -1,8 +1,9 @@
 # 16 - Testing strategy
 
 How SyncForge is tested, what each layer proves, how to run it, and where each required
-failure scenario is covered. Counts are from 2026-11-13 (end of Phase 9). Results of the
-quality pass are in [PHASE_9_QA_REPORT.md](PHASE_9_QA_REPORT.md).
+failure scenario is covered. Counts are from 2026-11-13. The latest
+results, including a clean-clone run, are in the
+[final engineering report](FINAL_ENGINEERING_REPORT.md), section 11.
 
 ## 1. Layers
 

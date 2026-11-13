@@ -102,7 +102,7 @@ against the real services the header would be ignored. For those APIs the protec
 
 Closing the gap for such APIs would need a "find before create" step (look the user up by
 email after an interrupted or timed-out attempt and adopt it if it matches). It is not
-implemented; it is listed under known limitations in `PROJECT_STATUS.md`. A payroll
+implemented; it is listed under known limitations in the final engineering report. A payroll
 vendor with a modern API is likely to support idempotency keys; the mock payroll service
 does.
 

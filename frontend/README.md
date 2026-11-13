@@ -3,8 +3,8 @@
 Angular 22 administration application for SyncForge. It talks only to the SyncForge API;
 every figure and list on screen comes from an existing backend endpoint.
 
-The plan, the screen-to-endpoint map and the list of unsupported features are in
-[`docs/PHASE_8_FRONTEND_PLAN.md`](../docs/PHASE_8_FRONTEND_PLAN.md).
+Architecture, pages, API integration and testing are described in
+[`docs/25-frontend.md`](../docs/25-frontend.md).
 
 ## Requirements
 

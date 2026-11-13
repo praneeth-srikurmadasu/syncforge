@@ -21,7 +21,7 @@ export type SessionEndReason = 'expired' | 'revoked' | 'invalid' | 'signed_out';
  * memory and mirrored to sessionStorage so a reload keeps the user signed in; the copy is
  * per tab and disappears when the tab closes. This is a convenience, not XSS protection:
  * script running in the page could read the token either way. See
- * docs/PHASE_8_FRONTEND_ARCHITECTURE.md for the trade-off.
+ * docs/25-frontend.md (section 5) for the trade-off.
  */
 @Injectable({ providedIn: 'root' })
 export class SessionService {

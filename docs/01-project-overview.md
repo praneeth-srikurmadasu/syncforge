@@ -75,7 +75,7 @@ Angular 22 with TypeScript; pytest, Vitest, Playwright; Docker, GitHub Actions.
 
 ## Status and numbers
 
-Ten phases, delivered in order (PROJECT_STATUS.md). At the end of Phase 10: 579 backend
+Ten phases, delivered in order (CHANGELOG.md). At the end of Phase 10: 579 backend
 tests, 60 frontend unit tests, 13 browser tests, 58 API operations, 16 migrations,
 21 architecture decision records.
 
