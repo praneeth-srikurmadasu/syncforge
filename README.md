@@ -343,6 +343,8 @@ docker-compose.yml  PostgreSQL and Redis; with --profile full the whole applicat
 | [Requirements](docs/02-requirements.md), [functional](docs/03-functional-requirements.md), [non-functional](docs/04-non-functional-requirements.md) | Scope, assumptions, resolved ambiguities; every requirement with status and evidence |
 | [Design decisions](docs/20-design-decisions.md) | Index of the ADRs with their trade-offs, plus smaller decisions |
 | [Future improvements](docs/23-future-improvements.md) | What would come next, by area |
+| [Interview preparation](docs/22-interview-preparation.md) | A timed 10-15 minute walkthrough, 21 topics with questions and answers |
+| [Case studies](docs/24-case-studies.md) | Ten real situations end to end: onboarding, transfer, termination, outage, 429, duplicates, conflicts, worker crash, expired credentials, replay |
 | [Contributing](CONTRIBUTING.md) | Setup, layering rules, migrations, tests, commit messages |
 | [Deployment guide](docs/17-deployment-guide.md) | Local Docker versus production, components, configuration, secrets, database, releases, probes, checklist |
 | [Testing strategy](docs/16-testing-strategy.md) | Test layers, principles, where each failure scenario is tested, how to run everything |

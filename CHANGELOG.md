@@ -25,6 +25,8 @@ All notable changes to SyncForge are recorded here.
   `23-future-improvements.md`; `CONTRIBUTING.md`.
 - Settings: "Developer API" card opening the interactive API reference; the development
   server now forwards `/docs`, `/redoc` and `/openapi.json` to the API.
+- `docs/24-case-studies.md` (ten scenarios end to end with tests and trade-offs) and
+  `docs/22-interview-preparation.md` (timed walkthrough, 21 topics, general questions).
 
 #### Fixed
 - `packaging` added to the backend runtime requirements: kombu's Redis transport imports

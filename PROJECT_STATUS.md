@@ -1,6 +1,6 @@
 # SyncForge - Project Status
 
-**Current phase:** 10 in progress - Docker, CI/CD, deployment, final delivery (plan: `docs/PHASE_10_PLAN.md`). Milestones 1-3 delivered.
+**Current phase:** 10 in progress - Docker, CI/CD, deployment, final delivery (plan: `docs/PHASE_10_PLAN.md`). Milestones 1-4 delivered.
 **Last updated:** 2026-11-12
 
 | Phase | Status |
@@ -14,7 +14,7 @@
 | 7 - Data integrity, conflicts, audit logging | Complete |
 | 8 - Angular frontend | Complete |
 | 9 - Security, versioning, observability, QA | Complete |
-| 10 - Docker, CI/CD, deployment, final delivery | In progress (milestones 1-3 of 5) |
+| 10 - Docker, CI/CD, deployment, final delivery | In progress (milestones 1-4 of 5) |
 
 ## Phase 10 progress
 
@@ -24,10 +24,12 @@
 | 2 | GitHub Actions CI (`.github/workflows/ci.yml`): backend (ruff, migrations + `alembic check`, pytest with PostgreSQL and Redis), frontend (lint, format, API check, unit tests, build, audit), Docker stack with the Playwright browser tests against the containers; no secrets | Done |
 | 3 | `docs/17-deployment-guide.md`: local Docker versus production, components, reference architecture, configuration, secrets and key rotation, database (roles, pooling, TLS, backups), releases (expand-and-contract migrations, rollback), probes, logging, production checklist | Done |
 | 4a | `docs/01`-`04` (overview, requirements, functional and non-functional requirements with evidence), `docs/20` design decisions, `docs/23` future improvements, `CONTRIBUTING.md`; "Developer API" card in Settings linking the API reference (the brief's API documentation page was missing) and `/docs` forwarded by the dev server | Done |
-| 4b | `docs/22` interview preparation, `docs/24` ten case studies; `LICENSE` (owner's choice) | Next |
-| 5 | Final delivery | Planned |
+| 4b | `docs/24` ten case studies (request, processing, database changes, connector calls, failures, recovery, final state, logs and audit, tests, trade-offs; sequence and state diagrams); `docs/22` interview preparation (timed walkthrough, 21 topics x 8 parts, general questions) | Done |
+| 5 | `LICENSE` (owner's choice), clean-machine verification, final engineering report | Next |
 
 ### Phase 10 verification (actual results)
+- Milestone 4b: every test name cited in docs/22 and docs/24 (35) checked to exist; file
+  paths, error codes, audit actions, retry and breaker parameters checked against the code.
 - Milestone 4a, Linux workspace: every test name cited in docs/03 checked to exist;
   frontend build and lint clean after the Settings card; in headless Chrome the card's
   "Open the API reference" link opened `/docs` (Swagger UI) through the dev server.
