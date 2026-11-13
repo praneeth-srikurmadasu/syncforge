@@ -35,6 +35,12 @@ All notable changes to SyncForge are recorded here.
   a `{data, page}` envelope; cursors are opaque, checked against sort, filters and
   organization (`422 invalid_cursor`). `/api/v1` unchanged. Versioning policy and migration
   guide in docs/08 section 14; ADR-0021.
+- Performance: `infrastructure/scripts/benchmark.py` (API latency p50 / p95 / p99, event
+  throughput, EXPLAIN ANALYZE of the busiest queries, environment recorded); measured
+  results in `docs/performance/`; `docs/19-performance-and-scalability.md`.
+- Employee index `(organization_id, last_name)` replaced by
+  `(organization_id, last_name, first_name, id)` (migration 0016): directory pages and v2
+  cursor pages are read in index order without a sort (measured).
 
 #### Changed
 - CORS preflight allows `If-Match` and `Idempotency-Key` and exposes `ETag` and

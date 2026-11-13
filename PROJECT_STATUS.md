@@ -1,6 +1,6 @@
 # SyncForge - Project Status
 
-**Current phase:** 9 in progress - security, API versioning, observability, QA (plan: `docs/PHASE_9_PLAN.md`). Milestones 1-5 delivered.
+**Current phase:** 9 in progress - security, API versioning, observability, QA (plan: `docs/PHASE_9_PLAN.md`). Milestones 1-6 delivered.
 **Last updated:** 2026-11-12
 
 | Phase | Status |
@@ -13,7 +13,7 @@
 | 6 - Reliability engine and failure recovery | Complete |
 | 7 - Data integrity, conflicts, audit logging | Complete |
 | 8 - Angular frontend | Complete |
-| 9 - Security, versioning, observability, QA | In progress (milestones 1-5 of 7) |
+| 9 - Security, versioning, observability, QA | In progress (milestones 1-6 of 7) |
 | 10 | Not started |
 
 ## Phase 9 progress
@@ -25,10 +25,17 @@
 | 3 | Security events: append-only `security_events` (migration 0014) for sign-ins, failures, sign-outs, registrations and rate-limit refusals (recorded once per window); `GET /auth/activity` (own), `GET /security-events` (Super Admins); "Recent sign-ins" in Settings | Done |
 | 4 | Observability: worker and relay heartbeats (migration 0015), `GET /system/status` (Super Admins), `GET .../summary` with processing durations (p50 / p95 / max, 24 h), `event delivery finished` log line with duration; dashboard uses the summary (48 -> 33 requests per load, measured); `docs/18-observability.md` | Done |
 | 5 | `/api/v2/organizations/{id}/employees` with keyset (cursor) pagination, opaque validated cursors, v1 unchanged; versioning policy and v1 -> v2 migration guide (docs/08 section 14); ADR-0021 | Done |
-| 6 | Performance measurements | Next |
-| 7 | QA | Planned |
+| 6 | Performance: `infrastructure/scripts/benchmark.py` (API latency percentiles, event throughput, EXPLAIN ANALYZE), results in `docs/performance/`, `docs/19-performance-and-scalability.md`; employee name index widened to the full sort key (migration 0016) after the measurements showed sorts and a sequential scan | Done |
+| 7 | QA | Next |
 
 ### Phase 9 verification (actual results)
+- Milestone 6, Linux workspace (2 CPUs, everything on one machine; docs/19): four
+  benchmark runs. 1,000 employees: endpoints 9-17 ms p50. 10,000 employees: OFFSET last
+  page 27.6 ms vs cursor 9.9 ms, search 38.5 ms, summary 40.2 ms. One worker about 10
+  events/s (3 external calls each, about 90 ms worker time per event); two workers 16.3
+  events/s. Index change: page 1 0.115 -> 0.032 ms, cursor page 0.073 -> 0.036 ms (no
+  sort). Backend `alembic check` clean after migration 0016; migration, v2 and employee
+  API tests pass.
 - Milestone 5, Linux workspace: backend lint / format clean, `python -m pytest` **576
   passed** (12 new in `tests/test_api_v2.py`, including a hire and an archive between two
   page requests: v2 continued exactly after the last row, v1's offset repeated one);

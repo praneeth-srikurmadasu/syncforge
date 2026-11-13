@@ -491,7 +491,7 @@ Indexes - every query is scoped by organization, so each index leads with `organ
 
 | Index | Serves |
 |---|---|
-| `ix_employees_organization_id_last_name` | default list order (`sort=last_name`) |
+| `ix_employees_organization_id_name_order` | (organization_id, last_name, first_name, id): the default list order (v1 `sort=last_name`) and v2 keyset pages, read in index order without a sort (migration 0016 replaced the narrower (organization_id, last_name) index; docs/19 section 4) |
 | `ix_employees_organization_id_status` | `employment_status` filter |
 | `ix_employees_organization_id_department_id` | department filter, department employee counts, "department in use" check |
 | `ix_employees_organization_id_manager_id` | manager filter, direct reports on termination, the manager-chain query |

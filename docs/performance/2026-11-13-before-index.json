@@ -1,0 +1,179 @@
+{
+  "environment": {
+    "measured_at": "2026-11-13T05:01:30+00:00",
+    "os": "Linux-6.18.44-fc-v445-x86_64-with-glibc2.39",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "logical_cpus": 2,
+    "memory_gb": 7.8,
+    "python": "3.13.18",
+    "postgresql": "16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)"
+  },
+  "parameters": {
+    "employees": 1000,
+    "requests_per_endpoint": 200,
+    "hires": 100,
+    "organization_id": "afe757c6-911d-41f7-b351-4aba53c6a5fa",
+    "workers": 1
+  },
+  "latency": {
+    "GET v1 employees (page 1, 20 rows)": {
+      "n": 200,
+      "p50_ms": 13.35,
+      "p95_ms": 16.88,
+      "p99_ms": 17.17,
+      "mean_ms": 13.34
+    },
+    "GET v1 employees (last page, offset)": {
+      "n": 200,
+      "p50_ms": 13.22,
+      "p95_ms": 16.62,
+      "p99_ms": 19.27,
+      "mean_ms": 13.56
+    },
+    "GET v2 employees (page 1, 20 rows)": {
+      "n": 200,
+      "p50_ms": 10.38,
+      "p95_ms": 12.53,
+      "p99_ms": 14.29,
+      "mean_ms": 10.66
+    },
+    "GET v2 employees (last page, cursor)": {
+      "n": 200,
+      "p50_ms": 11.27,
+      "p95_ms": 13.68,
+      "p99_ms": 15.39,
+      "mean_ms": 11.73
+    },
+    "GET v1 employees search": {
+      "n": 200,
+      "p50_ms": 14.84,
+      "p95_ms": 18.8,
+      "p99_ms": 20.12,
+      "mean_ms": 15.16
+    },
+    "GET employee detail": {
+      "n": 200,
+      "p50_ms": 9.75,
+      "p95_ms": 12.54,
+      "p99_ms": 14.99,
+      "mean_ms": 9.9
+    },
+    "GET organization summary": {
+      "n": 200,
+      "p50_ms": 15.46,
+      "p95_ms": 19.45,
+      "p99_ms": 22.22,
+      "mean_ms": 16.08
+    },
+    "GET events (page 1)": {
+      "n": 200,
+      "p50_ms": 8.71,
+      "p95_ms": 10.45,
+      "p99_ms": 10.78,
+      "mean_ms": 8.73
+    },
+    "POST employee (create)": {
+      "n": 200,
+      "p50_ms": 15.66,
+      "p95_ms": 23.43,
+      "p99_ms": 26.09,
+      "mean_ms": 15.91
+    }
+  },
+  "throughput": {
+    "hires": 100,
+    "steps_per_event": 3,
+    "submitted_in_s": 1.33,
+    "all_completed_in_s": 10.78,
+    "events_per_second": 9.69,
+    "external_calls_per_second": 29.06,
+    "statuses": [
+      "completed"
+    ],
+    "end_to_end": {
+      "n": 100,
+      "p50_ms": 4781.62,
+      "p95_ms": 8602.17,
+      "p99_ms": 8915.27,
+      "mean_ms": 4834.26
+    },
+    "final_attempt": {
+      "n": 100,
+      "p50_ms": 93.56,
+      "p95_ms": 119.67,
+      "p99_ms": 139.98,
+      "mean_ms": 96.94
+    }
+  },
+  "query_plans": {
+    "v1 employee page (offset 0)": {
+      "execution_ms_median": 0.115,
+      "uses_index": true,
+      "nodes": [
+        "Limit",
+        "Incremental Sort",
+        "Index Scan (ix_employees_organization_id_last_name)"
+      ],
+      "rows_read": 66
+    },
+    "v1 employee page (last page, offset)": {
+      "execution_ms_median": 1.739,
+      "uses_index": false,
+      "nodes": [
+        "Limit",
+        "Sort",
+        "Seq Scan"
+      ],
+      "rows_read": 1300
+    },
+    "v1 employee total (count)": {
+      "execution_ms_median": 0.256,
+      "uses_index": false,
+      "nodes": [
+        "Aggregate",
+        "Seq Scan"
+      ],
+      "rows_read": 1300
+    },
+    "v2 employee page (last page, keyset)": {
+      "execution_ms_median": 0.073,
+      "uses_index": true,
+      "nodes": [
+        "Limit",
+        "Sort",
+        "Bitmap Heap Scan",
+        "Bitmap Index Scan (ix_employees_organization_id_last_name)"
+      ],
+      "rows_read": 85
+    },
+    "employee search (substring)": {
+      "execution_ms_median": 1.694,
+      "uses_index": false,
+      "nodes": [
+        "Limit",
+        "Sort",
+        "Seq Scan"
+      ],
+      "rows_read": 111
+    },
+    "events page (newest first)": {
+      "execution_ms_median": 0.049,
+      "uses_index": true,
+      "nodes": [
+        "Limit",
+        "Incremental Sort",
+        "Index Scan (ix_integration_events_organization_id_created_at)"
+      ],
+      "rows_read": 21
+    },
+    "summary: processing percentiles (24 h)": {
+      "execution_ms_median": 1.037,
+      "uses_index": false,
+      "nodes": [
+        "Aggregate",
+        "Seq Scan"
+      ],
+      "rows_read": 1300
+    }
+  }
+}

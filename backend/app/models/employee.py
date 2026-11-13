@@ -88,7 +88,16 @@ class Employee(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             name="termination_not_before_joining",
         ),
         # Indexes for the list/search/filter queries (always scoped by organization).
-        Index("ix_employees_organization_id_last_name", "organization_id", "last_name"),
+        # The directory's default order (v1 sort=last_name, v2 keyset): the full sort key,
+        # ending in the unique ID, so pages are read in index order without a sort step
+        # (Phase 9 measurements, docs/19).
+        Index(
+            "ix_employees_organization_id_name_order",
+            "organization_id",
+            "last_name",
+            "first_name",
+            "id",
+        ),
         Index("ix_employees_organization_id_status", "organization_id", "employment_status"),
         Index("ix_employees_organization_id_department_id", "organization_id", "department_id"),
         Index("ix_employees_organization_id_manager_id", "organization_id", "manager_id"),
