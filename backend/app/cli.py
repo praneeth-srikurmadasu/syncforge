@@ -38,6 +38,7 @@ from app.core.database import SessionLocal
 from app.core.logging import configure_logging
 from app.events.relay import OutboxRelay
 from app.models import User
+from app.monitoring.heartbeat import Heartbeat
 from app.reliability.idempotency import purge_expired
 from app.repositories.users import RevokedTokenRepository, UserRepository
 from app.schemas.auth import PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH
@@ -162,8 +163,10 @@ def run_outbox_relay(*, once: bool = False) -> int:
         "outbox relay started",
         extra={"poll_interval_seconds": settings.outbox_poll_interval_seconds},
     )
+    heartbeat = Heartbeat("relay", settings.heartbeat_interval_seconds, SessionLocal)
     try:
         while True:
+            heartbeat.maybe_beat(time.monotonic())
             try:
                 with SessionLocal() as session:
                     OutboxRelay(session, publish_event, settings).run_once()

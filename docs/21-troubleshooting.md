@@ -28,8 +28,14 @@ including connector calls (`syncforge.connectors`) and the outbound HTTP request
 
 ## Events and workers
 
+First check `GET /api/v1/system/status` as a Super Admin: it says whether a worker and the
+relay have reported in the last 60 seconds, how many events wait in the outbox, and
+whether any are past their lease ([docs/18](18-observability.md#3-health-of-background-processing)).
+
 | Symptom | Cause | Fix |
 |---|---|---|
+| `system/status` shows `healthy: false`, "No worker has reported..." | The worker is stopped, crashed, or cannot reach PostgreSQL | Start it (command below) and check its terminal for errors; a new instance appears within `HEARTBEAT_INTERVAL_SECONDS` |
+| An old stopped instance stays listed as not healthy | Rows of stopped processes are kept for a day, so you can see when a process last ran | Nothing to do; it is removed after a day. Only `healthy` instances count |
 | Events stay `pending`; nothing happens after creating an employee | The outbox relay or the worker is not running (or Redis is down) | Start Redis (`docker compose up -d redis`), the worker and the relay (docs/09, section 10). Nothing is lost: waiting events are published and processed in order once they run |
 | Relay logs `outbox publish failed` with `Connection refused` | Redis is not running | `docker compose up -d redis`; the relay retries on its next poll |
 | The worker terminal shows a traceback from **another project's** folder (e.g. `...\other-project\venv\Scripts\celery.exe`) using a different Python | The SyncForge virtual environment is not active, and another project's `Scripts` folder is on `PATH`, so a bare `celery` command runs that project's Celery | Start it with the project's interpreter: `& "$HOME\Projects\syncforge\backend\.venv\Scripts\python.exe" -m celery -A app.workers.celery_app worker --loglevel=INFO --pool=solo` |

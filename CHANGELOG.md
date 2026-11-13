@@ -23,6 +23,14 @@ All notable changes to SyncForge are recorded here.
   user, email hash, IP, user agent and request ID; never passwords or tokens.
   `GET /api/v1/auth/activity` (own history) and `GET /api/v1/security-events` (Super
   Admins). "Recent sign-ins" card in Settings.
+- Observability: heartbeats from workers (daemon thread) and the outbox relay
+  (`component_heartbeats`, migration 0015); `GET /api/v1/system/status` for Super Admins
+  (stale processes, outbox backlog, stuck events, `healthy` / `problems`);
+  `GET /api/v1/organizations/{id}/summary` with all dashboard counts and processing
+  durations (p50 / p95 / max over 24 h); `event delivery finished` worker log line with
+  `duration_ms`; `docs/18-observability.md`.
+- Dashboard: one summary request replaces the per-figure total requests (48 -> 33 API
+  requests per load, measured); the event pipeline card shows processing times.
 
 #### Changed
 - CORS preflight allows `If-Match` and `Idempotency-Key` and exposes `ETag` and

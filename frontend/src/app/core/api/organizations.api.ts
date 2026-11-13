@@ -2,7 +2,7 @@ import { HttpClient, HttpResourceRequest } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { API_BASE, PageQuery, orgUrl, query } from './http-util';
-import { Member, Organization, OrganizationRole, Page } from './models';
+import { Member, Organization, OrganizationRole, OrganizationSummary, Page } from './models';
 
 @Injectable({ providedIn: 'root' })
 export class OrganizationsApi {
@@ -45,5 +45,10 @@ export class OrganizationsApi {
     return this.http.get<Page<Member>>(orgUrl(orgId, 'members'), {
       params: query({ limit: 100 }),
     });
+  }
+
+  /** Dashboard figures and processing durations in one request (GET .../summary). */
+  summary(orgId: string): Observable<OrganizationSummary> {
+    return this.http.get<OrganizationSummary>(orgUrl(orgId, 'summary'));
   }
 }

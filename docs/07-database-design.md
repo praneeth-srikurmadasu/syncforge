@@ -876,6 +876,17 @@ than a day are deleted as new ones are written. Details: docs/15 section 4a.
 Indexes: `(user_id, created_at)` for "my activity", `(created_at)` for the platform list.
 Trigger `security_events_append_only` as for `audit_logs`. Not organization-scoped.
 
+### `component_heartbeats` - liveness of workers and the relay (Phase 9)
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| component, instance | varchar(20), varchar(200) | no | Composite PK; component is `worker` or `relay`, instance is `host:pid` |
+| started_at | timestamptz | no | When the process started |
+| last_seen_at | timestamptz | no | Last heartbeat (upserted every `HEARTBEAT_INTERVAL_SECONDS`) |
+
+Not organization-scoped. Rows not seen for a day are deleted by later heartbeats.
+Read by `GET /api/v1/system/status` (docs/18).
+
 ## 4. Migration strategy
 
 - Every schema change is an **Alembic migration** in `backend/migrations/versions/`,

@@ -11,6 +11,7 @@ from app.api.v1.dead_letters import router as dead_letters_router
 from app.api.v1.departments import router as departments_router
 from app.api.v1.employees import router as employees_router
 from app.api.v1.events import router as events_router
+from app.api.v1.monitoring import router as monitoring_router
 from app.api.v1.organizations import router as organizations_router
 from app.api.v1.security_events import router as security_events_router
 from app.api.v1.workflows import router as workflows_router
@@ -28,3 +29,4 @@ api_router.include_router(dead_letters_router)
 api_router.include_router(audit_router)
 api_router.include_router(conflicts_router)
 api_router.include_router(security_events_router)
+api_router.include_router(monitoring_router)

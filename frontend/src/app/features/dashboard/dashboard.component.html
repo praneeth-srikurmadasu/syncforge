@@ -181,6 +181,35 @@
               [summary]="'Events by status, ' + e.total + ' in total'"
             />
           }
+          @if (processing(); as p) {
+            @if (p.end_to_end_seconds && p.processing_seconds) {
+              <dl class="timing">
+                <div>
+                  <dt>Change to completion</dt>
+                  <dd>
+                    median {{ formatSeconds(p.end_to_end_seconds.p50) }}, 95th percentile
+                    {{ formatSeconds(p.end_to_end_seconds.p95) }}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Final attempt</dt>
+                  <dd>
+                    median {{ formatSeconds(p.processing_seconds.p50) }}, 95th percentile
+                    {{ formatSeconds(p.processing_seconds.p95) }}
+                  </dd>
+                </div>
+              </dl>
+              <p class="sf-faint timing-note">
+                {{ p.completed }} events completed in the last {{ p.window_hours }} hours. The
+                difference is queueing, retries and waits for rate limits.
+              </p>
+            } @else {
+              <p class="sf-faint timing-note">
+                No events completed in the last {{ p.window_hours }} hours, so there are no
+                processing times yet.
+              </p>
+            }
+          }
         } @else if (overview.isLoading()) {
           <sf-skeleton [rows]="5" [height]="20" />
         } @else {

@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { ApiError } from '../../core/api/api-error';
-import { DashboardData, dayWindows } from './dashboard-data';
+import { DashboardData, Overview, dayWindows } from './dashboard-data';
 
 describe('DashboardData', () => {
   it('builds consecutive local-day windows ending today', () => {
@@ -37,29 +37,60 @@ describe('DashboardData', () => {
     http.verify();
   });
 
-  it('reports a figure that failed to load as an error instead of zero', () => {
+  it('reads every figure from one summary request', () => {
     TestBed.configureTestingModule({
       providers: [provideHttpClient(), provideHttpClientTesting()],
     });
     const data = TestBed.inject(DashboardData);
     const http = TestBed.inject(HttpTestingController);
-    let overview: Awaited<ReturnType<typeof data.overview>> extends never ? never : unknown;
+    let overview: Overview | undefined;
     data.overview('o1').subscribe((o) => (overview = o));
-    for (const req of http.match(() => true)) {
-      if (req.request.url.endsWith('/dead-letter-events')) {
-        req.flush(
-          { error: { code: 'x', message: 'boom', details: null, request_id: 'r' } },
-          { status: 500, statusText: 'Server Error' },
-        );
-      } else if (req.request.url.endsWith('/connectors')) {
-        req.flush({ items: [], total: 0, limit: 100, offset: 0 });
-      } else {
-        req.flush({ items: [], total: 2, limit: 1, offset: 0 });
-      }
-    }
-    const o = overview as { deadLettersOpen: unknown; employeesActive: unknown };
-    expect(o.deadLettersOpen).toBeInstanceOf(ApiError);
-    expect(o.employeesActive).toBe(2);
+    http.expectOne('/api/v1/organizations/o1/summary').flush({
+      generated_at: '2026-11-12T12:00:00Z',
+      employees: { active: 14, on_leave: 1, terminated: 2 },
+      workflows: { active: 1, total: 2 },
+      connectors: { connected: 1, total: 1 },
+      events: { pending: 0, processing: 0, retrying: 1, completed: 30, dead_letter: 2 },
+      dead_letters_open: 2,
+      conflicts_open: { low: 0, medium: 1, high: 0, critical: 0, total: 1 },
+      processing: {
+        window_hours: 24,
+        completed: 30,
+        end_to_end_seconds: { p50: 0.4, p95: 3, max: 9 },
+        processing_seconds: { p50: 0.1, p95: 0.2, max: 0.4 },
+      },
+    });
+    http
+      .expectOne((r) => r.url === '/api/v1/organizations/o1/connectors')
+      .flush({ items: [], total: 0, limit: 100, offset: 0 });
+    http.verify(); // no other requests: the summary replaced ~18 list calls
+
+    expect(overview?.employeesActive).toBe(14);
+    expect(overview?.events.dead_letter).toBe(2);
+    expect(overview?.conflictsBySeverity.medium).toBe(1);
+    expect(overview?.processing).toMatchObject({ completed: 30 });
+  });
+
+  it('shows a failed summary as an error on each figure instead of zero', () => {
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
+    const data = TestBed.inject(DashboardData);
+    const http = TestBed.inject(HttpTestingController);
+    let overview: Overview | undefined;
+    data.overview('o1').subscribe((o) => (overview = o));
+    http
+      .expectOne('/api/v1/organizations/o1/summary')
+      .flush(
+        { error: { code: 'x', message: 'boom', details: null, request_id: 'r' } },
+        { status: 500, statusText: 'Server Error' },
+      );
+    http
+      .expectOne((r) => r.url === '/api/v1/organizations/o1/connectors')
+      .flush({ items: [], total: 0, limit: 100, offset: 0 });
+    expect(overview?.deadLettersOpen).toBeInstanceOf(ApiError);
+    expect(overview?.employeesActive).toBeInstanceOf(ApiError);
+    expect(overview?.connectors).toEqual([]);
     http.verify();
   });
 });

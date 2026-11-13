@@ -742,6 +742,28 @@ export interface paths {
         patch: operations["change_member_role_api_v1_organizations__organization_id__members__user_id__patch"];
         trace?: never;
     };
+    "/api/v1/organizations/{organization_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Organization Summary
+         * @description Counts of employees, workflows, connectors, events, open dead letters and open
+         *     conflicts, plus event processing durations over the last 24 hours. Each count equals
+         *     the `total` of the matching list endpoint.
+         */
+        get: operations["get_organization_summary_api_v1_organizations__organization_id__summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{organization_id}/workflows": {
         parameters: {
             query?: never;
@@ -857,6 +879,28 @@ export interface paths {
          * @description All security events, newest first, for investigating attacks across accounts.
          */
         get: operations["list_security_events_api_v1_security_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get System Status
+         * @description Whether workers and the outbox relay are alive and keeping up. `healthy` is false
+         *     when no worker or no relay has reported within HEARTBEAT_STALE_AFTER_SECONDS, or when
+         *     events are past their processing lease.
+         */
+        get: operations["get_system_status_api_v1_system_status_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1021,6 +1065,28 @@ export interface components {
             open_until: string | null;
             /** @description `closed`: normal. `open`: calls paused until `open_until` after repeated failures. `half_open`: one trial call is being made. */
             state: components["schemas"]["CircuitState"];
+        };
+        /** ComponentInstanceResponse */
+        ComponentInstanceResponse: {
+            /** Healthy */
+            healthy: boolean;
+            /**
+             * Instance
+             * @description host:pid of the process.
+             */
+            instance: string;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /** Seconds Since Seen */
+            seconds_since_seen: number;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
         };
         /** ConflictDetailResponse */
         ConflictDetailResponse: {
@@ -1453,6 +1519,24 @@ export interface components {
         DepartmentUpdate: {
             /** Name */
             name: string;
+        };
+        /** DurationsResponse */
+        DurationsResponse: {
+            /**
+             * Max
+             * @description Longest, seconds.
+             */
+            max: number;
+            /**
+             * P50
+             * @description Median, seconds.
+             */
+            p50: number;
+            /**
+             * P95
+             * @description 95th percentile, seconds.
+             */
+            p95: number;
         };
         /**
          * EmployeeCreate
@@ -1978,6 +2062,52 @@ export interface components {
          * @enum {string}
          */
         OrganizationRole: "org_admin" | "integration_manager" | "viewer";
+        /** OrganizationSummaryResponse */
+        OrganizationSummaryResponse: {
+            /**
+             * Conflicts Open
+             * @description Open conflicts by severity, plus `total`.
+             */
+            conflicts_open: {
+                [key: string]: number;
+            };
+            /**
+             * Connectors
+             * @description By status, plus `total`.
+             */
+            connectors: {
+                [key: string]: number;
+            };
+            /** Dead Letters Open */
+            dead_letters_open: number;
+            /**
+             * Employees
+             * @description Not archived, by employment status.
+             */
+            employees: {
+                [key: string]: number;
+            };
+            /**
+             * Events
+             * @description By processing status.
+             */
+            events: {
+                [key: string]: number;
+            };
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            processing: components["schemas"]["ProcessingStatsResponse"];
+            /**
+             * Workflows
+             * @description `active` and `total`.
+             */
+            workflows: {
+                [key: string]: number;
+            };
+        };
         /** OrganizationUpdate */
         OrganizationUpdate: {
             /** Name */
@@ -2180,6 +2310,20 @@ export interface components {
             severity: components["schemas"]["ConflictSeverity"];
             source: components["schemas"]["PolicySource"];
         };
+        /** ProcessingStatsResponse */
+        ProcessingStatsResponse: {
+            /**
+             * Completed
+             * @description Events completed in the window.
+             */
+            completed: number;
+            /** @description From the employee change to completion. Null when nothing completed. */
+            end_to_end_seconds: components["schemas"]["DurationsResponse"] | null;
+            /** @description Final attempt: from the last worker pickup to completion (the worker time of the successful attempt; excludes queueing and retry waits). */
+            processing_seconds: components["schemas"]["DurationsResponse"] | null;
+            /** Window Hours */
+            window_hours: number;
+        };
         /** ReadinessResponse */
         ReadinessResponse: {
             /** Checks */
@@ -2351,6 +2495,42 @@ export interface components {
             operation: components["schemas"]["StepOperation"];
             /** Position */
             position: number;
+        };
+        /** SystemStatusResponse */
+        SystemStatusResponse: {
+            /**
+             * Components
+             * @description Heartbeats per component (`worker`, `relay`), most recent first.
+             */
+            components: {
+                [key: string]: components["schemas"]["ComponentInstanceResponse"][];
+            };
+            /** Dead Letters Open */
+            dead_letters_open: number;
+            /** Events By Status */
+            events_by_status: {
+                [key: string]: number;
+            };
+            /** Events Oldest Pending Seconds */
+            events_oldest_pending_seconds: number | null;
+            /**
+             * Events Stuck Processing
+             * @description Events still marked processing after their lease ran out.
+             */
+            events_stuck_processing: number;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Healthy */
+            healthy: boolean;
+            /** Outbox Oldest Unpublished Seconds */
+            outbox_oldest_unpublished_seconds: number | null;
+            /** Outbox Unpublished */
+            outbox_unpublished: number;
+            /** Problems */
+            problems: string[];
         };
         /** TokenResponse */
         TokenResponse: {
@@ -4994,6 +5174,51 @@ export interface operations {
             };
         };
     };
+    get_organization_summary_api_v1_organizations__organization_id__summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationSummaryResponse"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Organization not found, or caller is not a member */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_workflows_api_v1_organizations__organization_id__workflows_get: {
         parameters: {
             query?: {
@@ -5451,6 +5676,40 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    get_system_status_api_v1_system_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemStatusResponse"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Caller is not a Super Admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

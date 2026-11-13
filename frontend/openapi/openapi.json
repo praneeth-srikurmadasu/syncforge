@@ -321,6 +321,42 @@
         "title": "CircuitSummary",
         "type": "object"
       },
+      "ComponentInstanceResponse": {
+        "properties": {
+          "healthy": {
+            "title": "Healthy",
+            "type": "boolean"
+          },
+          "instance": {
+            "description": "host:pid of the process.",
+            "title": "Instance",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          },
+          "seconds_since_seen": {
+            "title": "Seconds Since Seen",
+            "type": "number"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instance",
+          "started_at",
+          "last_seen_at",
+          "seconds_since_seen",
+          "healthy"
+        ],
+        "title": "ComponentInstanceResponse",
+        "type": "object"
+      },
       "ConflictDetailResponse": {
         "properties": {
           "authoritative_source": {
@@ -1373,6 +1409,32 @@
           "name"
         ],
         "title": "DepartmentUpdate",
+        "type": "object"
+      },
+      "DurationsResponse": {
+        "properties": {
+          "max": {
+            "description": "Longest, seconds.",
+            "title": "Max",
+            "type": "number"
+          },
+          "p50": {
+            "description": "Median, seconds.",
+            "title": "P50",
+            "type": "number"
+          },
+          "p95": {
+            "description": "95th percentile, seconds.",
+            "title": "P95",
+            "type": "number"
+          }
+        },
+        "required": [
+          "p50",
+          "p95",
+          "max"
+        ],
+        "title": "DurationsResponse",
         "type": "object"
       },
       "EmployeeCreate": {
@@ -2721,6 +2783,74 @@
         "title": "OrganizationRole",
         "type": "string"
       },
+      "OrganizationSummaryResponse": {
+        "properties": {
+          "conflicts_open": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Open conflicts by severity, plus `total`.",
+            "title": "Conflicts Open",
+            "type": "object"
+          },
+          "connectors": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "By status, plus `total`.",
+            "title": "Connectors",
+            "type": "object"
+          },
+          "dead_letters_open": {
+            "title": "Dead Letters Open",
+            "type": "integer"
+          },
+          "employees": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Not archived, by employment status.",
+            "title": "Employees",
+            "type": "object"
+          },
+          "events": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "By processing status.",
+            "title": "Events",
+            "type": "object"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "processing": {
+            "$ref": "#/components/schemas/ProcessingStatsResponse"
+          },
+          "workflows": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "`active` and `total`.",
+            "title": "Workflows",
+            "type": "object"
+          }
+        },
+        "required": [
+          "generated_at",
+          "employees",
+          "workflows",
+          "connectors",
+          "events",
+          "dead_letters_open",
+          "conflicts_open",
+          "processing"
+        ],
+        "title": "OrganizationSummaryResponse",
+        "type": "object"
+      },
       "OrganizationUpdate": {
         "properties": {
           "name": {
@@ -3295,6 +3425,49 @@
         "title": "PolicyUpdate",
         "type": "object"
       },
+      "ProcessingStatsResponse": {
+        "properties": {
+          "completed": {
+            "description": "Events completed in the window.",
+            "title": "Completed",
+            "type": "integer"
+          },
+          "end_to_end_seconds": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DurationsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "From the employee change to completion. Null when nothing completed."
+          },
+          "processing_seconds": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DurationsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Final attempt: from the last worker pickup to completion (the worker time of the successful attempt; excludes queueing and retry waits)."
+          },
+          "window_hours": {
+            "title": "Window Hours",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window_hours",
+          "completed",
+          "end_to_end_seconds",
+          "processing_seconds"
+        ],
+        "title": "ProcessingStatsResponse",
+        "type": "object"
+      },
       "ReadinessResponse": {
         "properties": {
           "checks": {
@@ -3696,6 +3869,93 @@
           "operation"
         ],
         "title": "StepResponse",
+        "type": "object"
+      },
+      "SystemStatusResponse": {
+        "properties": {
+          "components": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/ComponentInstanceResponse"
+              },
+              "type": "array"
+            },
+            "description": "Heartbeats per component (`worker`, `relay`), most recent first.",
+            "title": "Components",
+            "type": "object"
+          },
+          "dead_letters_open": {
+            "title": "Dead Letters Open",
+            "type": "integer"
+          },
+          "events_by_status": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Events By Status",
+            "type": "object"
+          },
+          "events_oldest_pending_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Events Oldest Pending Seconds"
+          },
+          "events_stuck_processing": {
+            "description": "Events still marked processing after their lease ran out.",
+            "title": "Events Stuck Processing",
+            "type": "integer"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "healthy": {
+            "title": "Healthy",
+            "type": "boolean"
+          },
+          "outbox_oldest_unpublished_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outbox Oldest Unpublished Seconds"
+          },
+          "outbox_unpublished": {
+            "title": "Outbox Unpublished",
+            "type": "integer"
+          },
+          "problems": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Problems",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generated_at",
+          "healthy",
+          "problems",
+          "components",
+          "outbox_unpublished",
+          "outbox_oldest_unpublished_seconds",
+          "events_by_status",
+          "events_oldest_pending_seconds",
+          "events_stuck_processing",
+          "dead_letters_open"
+        ],
+        "title": "SystemStatusResponse",
         "type": "object"
       },
       "TokenResponse": {
@@ -7616,6 +7876,61 @@
         ]
       }
     },
+    "/api/v1/organizations/{organization_id}/summary": {
+      "get": {
+        "description": "Counts of employees, workflows, connectors, events, open dead letters and open\nconflicts, plus event processing durations over the last 24 hours. Each count equals\nthe `total` of the matching list endpoint.",
+        "operationId": "get_organization_summary_api_v1_organizations__organization_id__summary_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "404": {
+            "description": "Organization not found, or caller is not a member"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Organization Summary",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
     "/api/v1/organizations/{organization_id}/workflows": {
       "get": {
         "operationId": "list_workflows_api_v1_organizations__organization_id__workflows_get",
@@ -8343,6 +8658,39 @@
         "summary": "List Security Events",
         "tags": [
           "security events"
+        ]
+      }
+    },
+    "/api/v1/system/status": {
+      "get": {
+        "description": "Whether workers and the outbox relay are alive and keeping up. `healthy` is false\nwhen no worker or no relay has reported within HEARTBEAT_STALE_AFTER_SECONDS, or when\nevents are past their processing lease.",
+        "operationId": "get_system_status_api_v1_system_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Caller is not a Super Admin"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get System Status",
+        "tags": [
+          "monitoring"
         ]
       }
     },

@@ -73,3 +73,29 @@ sf-time {
   font-size: var(--sf-text-xl);
   font-weight: 600;
 }
+
+.timing {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sf-space-3);
+  margin: var(--sf-space-4) 0 0;
+  padding-top: var(--sf-space-3);
+  border-top: 1px solid var(--sf-border);
+}
+.timing dt {
+  color: var(--sf-text-muted);
+  font-size: var(--sf-text-xs);
+}
+.timing dd {
+  margin: 2px 0 0;
+  font-size: var(--sf-text-sm);
+}
+.timing-note {
+  margin: var(--sf-space-2) 0 0;
+  font-size: var(--sf-text-xs);
+}
+@media (max-width: 600px) {
+  .timing {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

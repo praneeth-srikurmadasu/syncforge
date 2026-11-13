@@ -31,7 +31,7 @@
 | 401 | `token_expired` | Token past its `exp` |
 | 401 | `token_revoked` | Token was logged out |
 | 401 | `invalid_credentials` | Login failed (same message for every cause) |
-| 403 | `superadmin_required` | Platform endpoint (security events) called by someone who is not a Super Admin |
+| 403 | `superadmin_required` | Platform endpoint (security events, system status) called by someone who is not a Super Admin |
 | 403 | `insufficient_role` | Member of the organization, but the role lacks the permission; `details.required_permission` names it |
 | 404 | `not_found` | Unknown route |
 | 404 | `organization_not_found` | Organization does not exist, is deactivated, or the caller is not a member |
@@ -184,6 +184,36 @@ sign-in refusals by the per-account limit, sign-outs and the account's creation.
 ```
 Events whose account could not be tied to a user (an unknown email, a refusal by the
 per-IP limit) are not in anyone's own history; Super Admins see them below.
+
+## 3b. Observability
+
+### `GET /api/v1/organizations/{organization_id}/summary`
+Auth: any member (`org:read`). The dashboard's figures in one request; each count equals
+the `total` of the matching list endpoint.
+
+`200`:
+```json
+{"generated_at": "2026-11-12T17:09:25.679Z",
+ "employees": {"active": 14, "on_leave": 0, "terminated": 0},
+ "workflows": {"active": 1, "total": 2},
+ "connectors": {"pending": 2, "connected": 1, "error": 0, "disconnected": 3, "total": 6},
+ "events": {"pending": 0, "processing": 0, "retrying": 0, "completed": 33, "dead_letter": 0},
+ "dead_letters_open": 0,
+ "conflicts_open": {"low": 0, "medium": 0, "high": 0, "critical": 0, "total": 0},
+ "processing": {"window_hours": 24, "completed": 33,
+   "end_to_end_seconds": {"p50": 0.44, "p95": 35.727, "max": 58.41},
+   "processing_seconds": {"p50": 0.015, "p95": 0.204, "max": 0.423}}}
+```
+Employees exclude archived ones. `processing` covers events completed in the last 24 h:
+`end_to_end_seconds` from the employee change to completion, `processing_seconds` the
+final attempt (last worker pickup to completion). Both are `null` when nothing completed.
+(Example values are from the workspace demo organization.)
+
+### `GET /api/v1/system/status`
+Auth: **Super Admin** (`403 superadmin_required` otherwise). Heartbeats of workers and
+the relay, outbox backlog, platform-wide event states, events past their processing
+lease, open dead letters, and `healthy` / `problems`. Field reference:
+[docs/18 section 3](18-observability.md#3-health-of-background-processing).
 
 ## 3a. Platform security events - `/api/v1/security-events`
 

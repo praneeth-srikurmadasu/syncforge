@@ -4,7 +4,7 @@ import { RouterLink } from '@angular/router';
 import { ApiError } from '../../core/api/api-error';
 import { AuditApi, EventsApi } from '../../core/api/operations.api';
 import { OrgContextService } from '../../core/org/org-context.service';
-import { humanize } from '../../core/util/format';
+import { formatDuration, humanize } from '../../core/util/format';
 import { BarChartComponent, ChartSeries } from '../../shared/charts/chart.component';
 import { StatusBadgeComponent } from '../../shared/ui/badge.component';
 import { EmployeeNameComponent } from '../../shared/ui/employee-name.component';
@@ -107,6 +107,13 @@ export class DashboardComponent {
     const parts = [e.pending, e.processing, e.retrying];
     const err = parts.find((p) => p instanceof ApiError);
     return err ?? parts.reduce<number>((sum, p) => sum + (p as number), 0);
+  });
+
+  protected readonly formatSeconds = (seconds: number) => formatDuration(seconds * 1000);
+  /** Processing durations of the last 24 hours, or null when unavailable. */
+  protected readonly processing = computed(() => {
+    const p = this.overview.value()?.processing;
+    return p && !(p instanceof ApiError) ? p : null;
   });
 
   protected readonly eventChart = computed(() => {

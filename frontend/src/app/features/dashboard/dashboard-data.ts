@@ -1,12 +1,17 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, catchError, forkJoin, map, of } from 'rxjs';
 import { ApiError } from '../../core/api/api-error';
-import { ConnectorsApi, WorkflowsApi } from '../../core/api/integrations.api';
-import { AuditApi, ConflictsApi, DeadLettersApi, EventsApi } from '../../core/api/operations.api';
-import { Connector, IntegrationEventStatus } from '../../core/api/models';
-import { EmployeesApi } from '../../core/api/workforce.api';
+import { ConnectorsApi } from '../../core/api/integrations.api';
+import {
+  Connector,
+  Department,
+  IntegrationEventStatus,
+  OrganizationSummary,
+  ProcessingStats,
+} from '../../core/api/models';
+import { AuditApi } from '../../core/api/operations.api';
+import { OrganizationsApi } from '../../core/api/organizations.api';
 import { DepartmentsApi } from '../../core/api/workforce.api';
-import { Department } from '../../core/api/models';
 
 /** A number from the API, or the error that prevented reading it (shown, never hidden). */
 export type Count = number | ApiError;
@@ -30,6 +35,55 @@ export interface Overview {
   conflictsOpen: Count;
   conflictsBySeverity: Record<'low' | 'medium' | 'high' | 'critical', Count>;
   connectors: Connector[] | ApiError;
+  processing: ProcessingStats | ApiError;
+}
+
+/** Maps the summary onto the dashboard's figures; a failed summary fails each figure. */
+export function toOverview(
+  summary: OrganizationSummary | ApiError,
+  connectors: Connector[] | ApiError,
+): Overview {
+  if (summary instanceof ApiError) {
+    const e = summary;
+    return {
+      employeesActive: e,
+      employeesOnLeave: e,
+      employeesTerminated: e,
+      workflowsActive: e,
+      workflowsTotal: e,
+      events: Object.fromEntries(EVENT_STATUSES.map((s) => [s, e])) as Record<
+        IntegrationEventStatus,
+        Count
+      >,
+      deadLettersOpen: e,
+      conflictsOpen: e,
+      conflictsBySeverity: { low: e, medium: e, high: e, critical: e },
+      connectors,
+      processing: e,
+    };
+  }
+  const c = summary.conflicts_open;
+  return {
+    employeesActive: summary.employees['active'] ?? 0,
+    employeesOnLeave: summary.employees['on_leave'] ?? 0,
+    employeesTerminated: summary.employees['terminated'] ?? 0,
+    workflowsActive: summary.workflows['active'] ?? 0,
+    workflowsTotal: summary.workflows['total'] ?? 0,
+    events: Object.fromEntries(EVENT_STATUSES.map((s) => [s, summary.events[s] ?? 0])) as Record<
+      IntegrationEventStatus,
+      Count
+    >,
+    deadLettersOpen: summary.dead_letters_open,
+    conflictsOpen: c['total'] ?? 0,
+    conflictsBySeverity: {
+      low: c['low'] ?? 0,
+      medium: c['medium'] ?? 0,
+      high: c['high'] ?? 0,
+      critical: c['critical'] ?? 0,
+    },
+    connectors,
+    processing: summary.processing,
+  };
 }
 
 export interface DailyActivity {
@@ -56,70 +110,28 @@ export function dayWindows(
 }
 
 /**
- * Every dashboard figure comes from an existing list endpoint: totals are read with
- * `limit=1` (the response carries `total`), and daily activity from audit-log entries in
- * each day's window. The backend has no aggregate endpoints; nothing here is estimated.
+ * The dashboard's figures come from GET .../summary (one request; each count equals the
+ * `total` of the matching list endpoint), the connector health table from the connector
+ * list, and daily activity from audit-log entries in each day's window. Nothing here is
+ * estimated. If the summary fails, every figure from it shows that error.
  */
 @Injectable({ providedIn: 'root' })
 export class DashboardData {
   private readonly departments = inject(DepartmentsApi);
-  private readonly employees = inject(EmployeesApi);
+  private readonly organizations = inject(OrganizationsApi);
   private readonly connectors = inject(ConnectorsApi);
-  private readonly workflows = inject(WorkflowsApi);
-  private readonly events = inject(EventsApi);
-  private readonly deadLetters = inject(DeadLettersApi);
-  private readonly conflicts = inject(ConflictsApi);
   private readonly audit = inject(AuditApi);
 
   overview(orgId: string): Observable<Overview> {
-    const one = { limit: 1 };
-    const total = <T>(source: Observable<{ total: number } & T>): Observable<Count> =>
-      source.pipe(
-        map((page) => page.total),
-        catchError((e: unknown) => of(ApiError.from(e))),
-      );
-    const workflowTotal = (active?: boolean) =>
-      total(this.workflows.list(orgId, { limit: 1, is_active: active }));
-
     return forkJoin({
-      employeesActive: total(this.employees.list(orgId, { ...one, employment_status: 'active' })),
-      employeesOnLeave: total(
-        this.employees.list(orgId, { ...one, employment_status: 'on_leave' }),
-      ),
-      employeesTerminated: total(
-        this.employees.list(orgId, { ...one, employment_status: 'terminated' }),
-      ),
-      workflowsActive: workflowTotal(true),
-      workflowsTotal: workflowTotal(),
-      events: forkJoin(
-        Object.fromEntries(
-          EVENT_STATUSES.map((s) => [
-            s,
-            total(this.events.list(orgId, { ...one, event_status: s })),
-          ]),
-        ) as Record<IntegrationEventStatus, Observable<Count>>,
-      ),
-      deadLettersOpen: total(this.deadLetters.list(orgId, { ...one, entry_status: 'open' })),
-      conflictsOpen: total(this.conflicts.list(orgId, { ...one, conflict_status: 'open' })),
-      conflictsBySeverity: forkJoin({
-        low: total(
-          this.conflicts.list(orgId, { ...one, conflict_status: 'open', severity: 'low' }),
-        ),
-        medium: total(
-          this.conflicts.list(orgId, { ...one, conflict_status: 'open', severity: 'medium' }),
-        ),
-        high: total(
-          this.conflicts.list(orgId, { ...one, conflict_status: 'open', severity: 'high' }),
-        ),
-        critical: total(
-          this.conflicts.list(orgId, { ...one, conflict_status: 'open', severity: 'critical' }),
-        ),
-      }),
+      summary: this.organizations
+        .summary(orgId)
+        .pipe(catchError((e: unknown) => of(ApiError.from(e)))),
       connectors: this.connectors.list(orgId).pipe(
         map((page) => page.items),
         catchError((e: unknown) => of(ApiError.from(e))),
       ),
-    });
+    }).pipe(map(({ summary, connectors }) => toOverview(summary, connectors)));
   }
 
   departmentsList(orgId: string): Observable<Department[]> {

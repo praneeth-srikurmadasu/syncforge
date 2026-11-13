@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     # Largest request body accepted; larger requests get 413 before any handler runs.
     max_request_body_bytes: int = Field(default=1_048_576, ge=1024)
 
+    # ---- Observability --------------------------------------------------------------
+    # Workers and the outbox relay record a heartbeat this often; one not seen for
+    # HEARTBEAT_STALE_AFTER_SECONDS is reported as stale by GET /api/v1/system/status.
+    heartbeat_interval_seconds: int = Field(default=15, ge=1, le=600)
+    heartbeat_stale_after_seconds: int = Field(default=60, ge=5, le=3600)
+
     # ---- Connectors (external applications) -------------------------------------
     # Fernet key(s) that encrypt connector credentials at rest. Comma-separated to
     # rotate keys: the first key encrypts, every key can decrypt.

@@ -1,6 +1,6 @@
 # SyncForge - Project Status
 
-**Current phase:** 9 in progress - security, API versioning, observability, QA (plan: `docs/PHASE_9_PLAN.md`). Milestones 1-3 delivered.
+**Current phase:** 9 in progress - security, API versioning, observability, QA (plan: `docs/PHASE_9_PLAN.md`). Milestones 1-4 delivered.
 **Last updated:** 2026-11-12
 
 | Phase | Status |
@@ -13,7 +13,7 @@
 | 6 - Reliability engine and failure recovery | Complete |
 | 7 - Data integrity, conflicts, audit logging | Complete |
 | 8 - Angular frontend | Complete |
-| 9 - Security, versioning, observability, QA | In progress (milestones 1-3 of 7) |
+| 9 - Security, versioning, observability, QA | In progress (milestones 1-4 of 7) |
 | 10 | Not started |
 
 ## Phase 9 progress
@@ -23,10 +23,18 @@
 | 1 | Audit and plan (`docs/PHASE_9_PLAN.md`) | Done |
 | 2 | Sign-in and registration rate limits (PostgreSQL fixed windows, hashed subjects, 429 with Retry-After), common-password refusal (registration and CLI), 1 MiB request body limit (413), security headers, CORS headers for `If-Match` / `Idempotency-Key`; UI shows the reasons | Done |
 | 3 | Security events: append-only `security_events` (migration 0014) for sign-ins, failures, sign-outs, registrations and rate-limit refusals (recorded once per window); `GET /auth/activity` (own), `GET /security-events` (Super Admins); "Recent sign-ins" in Settings | Done |
-| 4 | Observability | Next |
-| 5-7 | `/api/v2`, performance, QA | Planned |
+| 4 | Observability: worker and relay heartbeats (migration 0015), `GET /system/status` (Super Admins), `GET .../summary` with processing durations (p50 / p95 / max, 24 h), `event delivery finished` log line with duration; dashboard uses the summary (48 -> 33 requests per load, measured); `docs/18-observability.md` | Done |
+| 5 | `/api/v2` | Next |
+| 6-7 | Performance, QA | Planned |
 
 ### Phase 9 verification (actual results)
+- Milestone 4, Linux workspace: backend lint / format clean, `python -m pytest` **564
+  passed** (9 new in `tests/test_monitoring.py`, including summary counts equal to the list
+  totals); frontend `npm run test:ci` **60 passed**, lint clean, `npm run e2e` **13
+  passed**. Live: both heartbeats reported; with the worker stopped for 70 s,
+  `system/status` returned `healthy: false` ("No worker has reported in the last 60
+  seconds"), and a restarted worker appeared healthy within 20 s. Dashboard load on the
+  demo organization: 48 API requests before, 33 after (counted in headless Chrome).
 - Milestone 3, Linux workspace: backend lint / format clean, `python -m pytest` **555
   passed** (8 new in `tests/test_security_events.py`; migration checks include 0014);
   frontend `npm run test:ci` **59 passed**, lint clean, `npm run e2e` **13 passed** (axe

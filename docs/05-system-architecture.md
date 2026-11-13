@@ -171,8 +171,11 @@ failed and why, then search the worker logs for the event's `correlation_id` or 
 | `GET /ready` | Readiness: can it serve traffic? | Yes - runs `SELECT 1`; returns `503 not_ready` if the DB is unreachable |
 
 The API's readiness does not depend on Redis or the workers: employee changes are recorded
-in the outbox even while they are down, and processed when they return. Worker and relay
-health checks are part of the observability work in Phase 9.
+in the outbox even while they are down, and processed when they return. Workers and the
+relay report heartbeats instead (`component_heartbeats`), read by Super Admins at
+`GET /api/v1/system/status` together with the outbox backlog and stuck events; per
+organization, `GET .../summary` gives the dashboard's counts and processing durations
+([docs/18](18-observability.md)).
 
 ## 7. Configuration
 

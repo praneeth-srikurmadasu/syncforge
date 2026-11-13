@@ -1,5 +1,7 @@
 """Celery tasks. Thin wrappers: open a session, run the engine, close the session."""
 
+import logging
+import time
 import uuid
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -11,6 +13,8 @@ from app.core.request_context import reset_request_id, set_request_id
 from app.workers.celery_app import PROCESS_EVENT_TASK, celery_app
 from app.workflows.engine import EventProcessor
 
+logger = logging.getLogger("syncforge.worker")
+
 # Replaced in tests to run tasks inside the test's transaction.
 session_factory: Callable[[], AbstractContextManager[Session]] = SessionLocal
 
@@ -21,10 +25,22 @@ def process_event(event_id: str, correlation_id: str | None = None) -> str:
     # The correlation ID becomes the log context, so every worker log line carries the
     # request ID of the API call that caused the event.
     token = set_request_id(correlation_id)
+    start = time.perf_counter()
+    outcome = "error"
     try:
         with session_factory() as session:
-            return EventProcessor(session).process(uuid.UUID(event_id)).outcome
+            outcome = EventProcessor(session).process(uuid.UUID(event_id)).outcome
+            return outcome
     finally:
+        # One line per delivery with its duration: how long this worker spent on it.
+        logger.info(
+            "event delivery finished",
+            extra={
+                "event_id": event_id,
+                "outcome": outcome,
+                "duration_ms": round((time.perf_counter() - start) * 1000, 2),
+            },
+        )
         reset_request_id(token)
 
 

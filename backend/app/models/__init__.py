@@ -26,6 +26,7 @@ from app.models.connector import (
 from app.models.dead_letter import DeadLetterEvent, DeadLetterReason, DeadLetterStatus
 from app.models.employee import Department, Employee, EmploymentStatus
 from app.models.event import IntegrationEvent, IntegrationEventStatus, OutboxEvent
+from app.models.heartbeat import ComponentHeartbeat
 from app.models.idempotency import IdempotencyRecord
 from app.models.organization import Organization, OrganizationMembership, OrganizationRole
 from app.models.revoked_token import RevokedToken
@@ -45,6 +46,7 @@ from app.models.workflow import (
 )
 
 __all__ = [
+    "ComponentHeartbeat",
     "SecurityEvent",
     "SecurityEventType",
     "AuthRateWindow",

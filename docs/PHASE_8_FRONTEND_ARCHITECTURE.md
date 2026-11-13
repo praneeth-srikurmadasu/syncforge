@@ -216,9 +216,9 @@ action failures use toasts. Dashboard figures fail independently: one failing co
   changes.
 - Employee names in event, dead-letter and conflict lists (the API returns IDs) are
   fetched once per employee and cached per organization.
-- The dashboard reads totals with `limit=1` list calls, because the API has no aggregate
-  endpoint. That is about 40 small requests per dashboard load; a summary endpoint would
-  remove them (noted as a backend improvement for Phase 9).
+- The dashboard read totals with `limit=1` list calls in Phase 8, because the API had no
+  aggregate endpoint. Phase 9 added `GET .../summary`; measured on the same data, a
+  dashboard load went from 48 to 33 API requests (docs/18 section 4).
 
 ## 11. Build and configuration
 

@@ -287,6 +287,7 @@ docker-compose.yml  local PostgreSQL and Redis (more services added per phase)
 | [Reliability and retries](docs/12-reliability-and-retries.md) | Failure classification, backoff and jitter, attempt history, dead-letter queue and replay, circuit breaker, rate limits, timeouts, demo |
 | [Idempotency](docs/13-idempotency.md) | Where duplicates could come from and what stops each; idempotency keys outgoing and incoming |
 | [Data integrity](docs/14-data-integrity.md) | Audit log, optimistic concurrency (ETag / If-Match), source-of-truth policies, reconciliation, conflict resolution |
+| [Observability](docs/18-observability.md) | Logs and IDs, heartbeats, system status, organization summary and processing durations, investigating a failure |
 | [Security design](docs/15-security-design.md) | Auth flow, JWT lifecycle, passwords, secrets, roles, tenant isolation, connector credentials, SSRF |
 | [Troubleshooting](docs/21-troubleshooting.md) | Investigating failed requests and synchronizations, connector, worker, test and Windows issues |
 | [Frontend plan](docs/PHASE_8_FRONTEND_PLAN.md) | Screen-to-endpoint map, permission matrix, features the API does not support |

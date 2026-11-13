@@ -20,7 +20,7 @@ lease expires - the database, not Redis, is the source of truth.
 """
 
 from celery import Celery
-from celery.signals import setup_logging
+from celery.signals import setup_logging, worker_ready, worker_shutdown
 
 from app.core.config import get_settings
 from app.core.logging import configure_logging
@@ -50,3 +50,25 @@ celery_app.conf.update(
 def _configure_worker_logging(**_: object) -> None:
     """Use the same structured JSON logs as the API."""
     configure_logging(settings.log_level)
+
+
+_heartbeat_thread = None
+
+
+@worker_ready.connect
+def _start_heartbeat(**_: object) -> None:
+    """Record this worker as alive every HEARTBEAT_INTERVAL_SECONDS (GET /system/status)."""
+    global _heartbeat_thread  # noqa: PLW0603 - one heartbeat per worker process
+    from app.core.database import SessionLocal
+    from app.monitoring.heartbeat import Heartbeat, HeartbeatThread
+
+    _heartbeat_thread = HeartbeatThread(
+        Heartbeat("worker", settings.heartbeat_interval_seconds, SessionLocal)
+    )
+    _heartbeat_thread.start()
+
+
+@worker_shutdown.connect
+def _stop_heartbeat(**_: object) -> None:
+    if _heartbeat_thread is not None:
+        _heartbeat_thread.stop()
