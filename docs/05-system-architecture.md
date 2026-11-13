@@ -1,22 +1,25 @@
 # 05 - System Architecture
 
-> **Scope:** describes what is implemented as of Phase 7. Sections are added as
-> later phases add components (frontend). Nothing here is planned-only.
+> **Scope:** describes what is implemented at the end of Phase 10 (backend, Angular
+> application, Docker and CI). Nothing here is planned-only.
 
 ## 1. Current components
 
 ```mermaid
 flowchart LR
+    browser["Angular web app<br/>(served by nginx or the dev server)"]
     client["API client<br/>(Swagger UI, curl, tests)"]
     subgraph api["FastAPI application (backend/app)"]
-        mw["RequestContextMiddleware<br/>request ID + timing log"]
+        mw["RequestContextMiddleware<br/>request ID, timing log,<br/>security headers"]
+        body["BodySizeLimitMiddleware<br/>1 MiB"]
         cors["CORSMiddleware"]
-        routes["Routers<br/>/health, /ready, /api/v1/auth,<br/>/api/v1/organizations,<br/>.../departments, .../employees,<br/>.../connectors, /connector-types,<br/>.../workflows, .../events"]
+        routes["Routers /api/v1<br/>auth, organizations, members,<br/>departments, employees, connectors,<br/>workflows, events, dead letters,<br/>conflicts, policies, audit logs,<br/>summary, security events, system status<br/>+ /api/v2 employees, /health, /ready"]
         deps["Dependencies<br/>DB session, current user,<br/>require_org_permission"]
         svc["Services<br/>Auth, Organization, Department,<br/>Employee, Connector, Workflow"]
         events["events<br/>lifecycle classification,<br/>record_events (outbox)"]
         repo["Repositories"]
-        sec["Security<br/>Argon2id, JWT, RBAC,<br/>credential encryption"]
+        sec["Security<br/>Argon2id, JWT, RBAC, sign-in limits,<br/>password policy, security events,<br/>credential encryption"]
+        mon["Monitoring<br/>summary, system status"]
         conn["Connector framework<br/>registry, adapters,<br/>ConnectorHttpClient"]
     end
     db[("PostgreSQL 16<br/>Docker Compose")]
@@ -32,7 +35,10 @@ flowchart LR
         payroll["Payroll mock :9103"]
     end
 
-    client --> mw --> cors --> routes
+    browser -- "/api via proxy" --> mw
+    client --> mw --> body --> cors --> routes
+    routes --> mon
+    mon --> db
     routes --> deps
     routes --> svc
     deps --> repo
@@ -48,6 +54,8 @@ flowchart LR
     engine -- "claim, record steps" --> db
     engine -- "via ConnectorService" --> conn
     engine --> rel
+    engine -- "heartbeat" --> db
+    relay -- "heartbeat" --> db
     rel -- "breaker and rate-limit rows,<br/>dead-letter entries" --> db
     relay -- "due retries" --> db
     conn -- "HTTP, timeouts, deadline,<br/>host allowlist, Idempotency-Key" --> slack
@@ -183,3 +191,54 @@ Settings are read by `app/core/config.py` (pydantic-settings) from environment v
 falling back to the repository `.env` file. Environment variables always win, which is how
 tests and containers override values. In `APP_ENV=production` the application refuses to
 start with the placeholder `JWT_SECRET_KEY` or `POSTGRES_PASSWORD`.
+
+## 8. Deployment architecture (local Docker Compose)
+
+`docker compose --profile full up -d --build` (README, docs/17). Production differences
+are in [docs/17](17-deployment-guide.md) section 1 and its reference architecture.
+
+```mermaid
+flowchart LR
+  user["Browser"] -->|"http://localhost:8080"| web
+  subgraph compose["Docker Compose project 'syncforge'"]
+    web["web<br/>nginx: Angular build<br/>forwards /api /docs /health /ready"]
+    api["api<br/>Uvicorn, no published port,<br/>trusts forwarded client IP"]
+    migrate["migrate<br/>alembic upgrade head<br/>(one-off, runs first)"]
+    worker["worker<br/>Celery, concurrency 2"]
+    relay["relay<br/>outbox-relay"]
+    pg[("postgres<br/>volume postgres-data")]
+    rd[("redis<br/>no persistence")]
+    ms["mock-slack :9101"]
+    mg["mock-google :9102"]
+    mp["mock-payroll :9103"]
+  end
+  web --> api
+  migrate --> pg
+  api --> pg
+  relay --> pg
+  relay --> rd
+  worker --> rd
+  worker --> pg
+  worker --> ms
+  worker --> mg
+  worker --> mp
+```
+
+Start-up order is enforced with health checks: PostgreSQL and Redis healthy -> `migrate`
+completed -> API, worker and relay -> web after the API is healthy. One backend image runs
+the API, worker, relay and migration job.
+
+## 9. Diagram index
+
+| Diagram | Where |
+|---|---|
+| High-level architecture | [01 Project overview](01-project-overview.md), section 1 above |
+| Component architecture | Section 1 above; domain model in [06](06-component-design.md) 2.1; connector classes in [10](10-connector-framework.md) 2; frontend layers in [PHASE_8_FRONTEND_ARCHITECTURE](PHASE_8_FRONTEND_ARCHITECTURE.md) 3 |
+| Employee onboarding sequence | [24 Case studies](24-case-studies.md), case 1 |
+| Employee termination sequence | [06](06-component-design.md) 2.5 |
+| Event processing sequence | [09](09-event-driven-architecture.md) 2-4, [11](11-workflow-engine.md) 4 |
+| Retry and failure handling | [12](12-reliability-and-retries.md) (retry sequence, dead-letter states, circuit breaker states), [24](24-case-studies.md) case 4 |
+| Database relationships | [07](07-database-design.md) section 1 |
+| Deployment architecture | Section 8 above (local), [17](17-deployment-guide.md) section 3 (production reference) |
+| Request lifecycle | Section 3 above |
+| Authentication (sign-in, token lifecycle) | [PHASE_8_FRONTEND_ARCHITECTURE](PHASE_8_FRONTEND_ARCHITECTURE.md) 5, [15](15-security-design.md) |

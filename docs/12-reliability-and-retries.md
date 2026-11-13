@@ -104,7 +104,7 @@ sequenceDiagram
     W->>DB: attempt row opened, job running (COMMIT)
     W->>W: external call fails: server 503
     W->>DB: attempt closed (failed, 503, retryable)<br/>job retrying, next_attempt_at = now + 2.1 s<br/>event retrying, next_attempt_at = earliest job (COMMIT)
-    Note over W: the worker is free; later steps of this execution wait (sequential)
+    Note over W: the worker is free, later steps of this execution wait (sequential)
     loop every poll
         R->>DB: SELECT retrying events WHERE next_attempt_at <= now FOR UPDATE SKIP LOCKED
     end

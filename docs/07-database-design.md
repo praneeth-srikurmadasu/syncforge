@@ -331,6 +331,29 @@ erDiagram
         uuid resolved_by_user_id FK
         timestamptz created_at
     }
+    USERS ||--o{ SECURITY_EVENTS : "signs in (no FK)"
+    AUTH_RATE_WINDOWS {
+        varchar key PK
+        timestamptz window_start PK
+        int hits
+    }
+    SECURITY_EVENTS {
+        bigint id PK
+        varchar event
+        uuid user_id
+        char account_hash
+        varchar reason
+        varchar client_ip
+        varchar user_agent
+        varchar request_id
+        timestamptz created_at
+    }
+    COMPONENT_HEARTBEATS {
+        varchar component PK
+        varchar instance PK
+        timestamptz started_at
+        timestamptz last_seen_at
+    }
 ```
 
 *Users* are people who log in to SyncForge. *Employees* are the workforce records SyncForge

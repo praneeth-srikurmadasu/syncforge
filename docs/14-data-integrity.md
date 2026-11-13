@@ -119,10 +119,10 @@ sequenceDiagram
     A->>API: GET employee -> ETag "1"
     B->>API: GET employee -> ETag "1"
     A->>API: PATCH location=Pune, If-Match "1"
-    API->>DB: SELECT ... FOR UPDATE; version 1 = 1; UPDATE ... SET version=2 WHERE version=1
+    API->>DB: SELECT ... FOR UPDATE, version 1 = 1, UPDATE ... SET version=2 WHERE version=1
     API-->>A: 200, ETag "2"
     B->>API: PATCH location=Chennai, If-Match "1"
-    API->>DB: SELECT ... FOR UPDATE; version 2 != 1
+    API->>DB: SELECT ... FOR UPDATE, version 2 != 1
     API-->>B: 412 version_conflict (expected 1, current 2) - reload and re-apply
 ```
 

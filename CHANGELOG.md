@@ -4,9 +4,24 @@ All notable changes to SyncForge are recorded here.
 
 ## [Unreleased]
 
-### Phase 10 - Docker, CI/CD, deployment and final delivery (in progress)
+### Phase 10 - Docker, CI/CD, deployment and final delivery
 
 #### Added
+- `LICENSE` (MIT) and a Licence section in the README.
+- `docs/FINAL_ENGINEERING_REPORT.md`: the final delivery report (features, architecture,
+  database, API inventory, connector status, reliability, security, actual test results
+  including a clean-clone run, performance, limitations, deployment, publication).
+- `docs/05`: deployment architecture diagram (section 8) and an index of every required
+  diagram (section 9); component diagram updated for Phase 9.
+- `docs/07`: ER diagram includes `auth_rate_windows`, `security_events` and
+  `component_heartbeats`.
+
+#### Fixed
+- Three sequence diagrams (docs/11, 12, 14) failed to render because a semicolon in a
+  message ends a Mermaid statement; all 32 diagrams now render with mermaid-cli 11.16.0.
+- README unit-test count (60, not 57).
+
+#### Added in milestones 1-4
 - `docs/PHASE_10_PLAN.md`.
 - Docker images: `backend/Dockerfile` (one image for the API, worker, relay and migration
   job, non-root), `frontend/Dockerfile` + `frontend/nginx.conf` (Angular build served by

@@ -1,7 +1,7 @@
 # SyncForge - Project Status
 
-**Current phase:** 10 in progress - Docker, CI/CD, deployment, final delivery (plan: `docs/PHASE_10_PLAN.md`). Milestones 1-4 delivered.
-**Last updated:** 2026-11-12
+**Current phase:** all 10 phases complete. Final summary: `docs/FINAL_ENGINEERING_REPORT.md`. Next: the owner's review and clean-up of the repository.
+**Last updated:** 2026-11-13
 
 | Phase | Status |
 |---|---|
@@ -14,7 +14,7 @@
 | 7 - Data integrity, conflicts, audit logging | Complete |
 | 8 - Angular frontend | Complete |
 | 9 - Security, versioning, observability, QA | Complete |
-| 10 - Docker, CI/CD, deployment, final delivery | In progress (milestones 1-4 of 5) |
+| 10 - Docker, CI/CD, deployment, final delivery | Complete |
 
 ## Phase 10 progress
 
@@ -25,9 +25,20 @@
 | 3 | `docs/17-deployment-guide.md`: local Docker versus production, components, reference architecture, configuration, secrets and key rotation, database (roles, pooling, TLS, backups), releases (expand-and-contract migrations, rollback), probes, logging, production checklist | Done |
 | 4a | `docs/01`-`04` (overview, requirements, functional and non-functional requirements with evidence), `docs/20` design decisions, `docs/23` future improvements, `CONTRIBUTING.md`; "Developer API" card in Settings linking the API reference (the brief's API documentation page was missing) and `/docs` forwarded by the dev server | Done |
 | 4b | `docs/24` ten case studies (request, processing, database changes, connector calls, failures, recovery, final state, logs and audit, tests, trade-offs; sequence and state diagrams); `docs/22` interview preparation (timed walkthrough, 21 topics x 8 parts, general questions) | Done |
-| 5 | `LICENSE` (owner's choice), clean-machine verification, final engineering report | Next |
+| 5 | MIT `LICENSE`; architecture document gains the deployment diagram and a diagram index; ER diagram gains the Phase 9 tables; all 32 Mermaid diagrams rendered (3 fixed); clean-machine verification from a fresh GitHub clone; `docs/FINAL_ENGINEERING_REPORT.md` | Done |
 
 ### Phase 10 verification (actual results)
+- Milestone 5, Linux workspace, fresh `git clone` of GitHub `main` at `0784cd1`, empty
+  databases, README steps: `alembic upgrade head` -> `downgrade base` -> `upgrade head`,
+  `alembic check` no drift; ruff clean; **579 passed**; API, mocks, worker and relay
+  started, `/health` ok, `/ready` ready, `/docs` 200; `demo_reliability.py` exit 0;
+  frontend `npm ci`, lint, `format:check`, `api:check` clean, **60 passed**, build ok;
+  Playwright against the running stack **13 passed**. mermaid-cli 11.16.0 rendered all 32
+  diagrams after replacing semicolons (a statement separator in Mermaid) in three
+  sequence-diagram messages (docs/11, 12, 14).
+- GitHub Actions (owner's screenshot, 2026-11-13): run #2 (`3e9fe33`) passed all three
+  jobs - backend, frontend, Docker stack with browser tests. Runs #1 and #3 were
+  superseded by the next push (`cancel-in-progress`).
 - Milestone 4b: every test name cited in docs/22 and docs/24 (35) checked to exist; file
   paths, error codes, audit actions, retry and breaker parameters checked against the code.
 - Milestone 4a, Linux workspace: every test name cited in docs/03 checked to exist;

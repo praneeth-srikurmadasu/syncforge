@@ -125,9 +125,9 @@ sequenceDiagram
             CS->>DB: current employee, account link, preconditions
             CS->>DB: circuit breaker check (may refuse: circuit_open)
             CS->>X: create_user / update_user / deactivate_user (no DB lock held)
-            CS->>DB: record result in the breaker; store or update the account link, COMMIT
+            CS->>DB: record result in the breaker, store or update the account link, COMMIT
             CS-->>P: result, or error (normalized)
-            P->>DB: close attempt; job=succeeded / skipped / retrying (next_attempt_at) / failed, COMMIT
+            P->>DB: close attempt, job=succeeded / skipped / retrying (next_attempt_at) / failed, COMMIT
         end
     end
     P->>DB: event completed / retrying (earliest next_attempt_at) / dead_letter<br/>(+ dead_letter_events entry), locked_until=NULL, COMMIT

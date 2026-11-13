@@ -8,7 +8,7 @@ SyncForge keeps employee data consistent across HR, Slack, Google Workspace and 
 turning workforce changes (hire, transfer, termination) into reliably processed, audited
 synchronization events.
 
-> **Status: Phase 9 of 10 complete - security hardening, API versioning, observability and performance measurements on top of the backend (Phases 2-7) and the Angular application (Phase 8). Next: Phase 10, Docker, CI and final delivery.**
+> **Status: all 10 phases complete - backend (Phases 2-7), Angular application (Phase 8), security, versioning and observability (Phase 9), Docker, CI and final delivery (Phase 10). Summary: [final engineering report](docs/FINAL_ENGINEERING_REPORT.md).**
 > See [`PROJECT_STATUS.md`](PROJECT_STATUS.md) for exactly what works today.
 
 ## Screenshots
@@ -41,7 +41,7 @@ Real screens of the running application against the local stack (the connectors 
 - Reliability overview, dead-letter queue with replay, data conflicts with
   policy-aware resolution, source-of-truth policies, audit log, team and roles, settings
 - Dark and light themes, collapsible sidebar, phone layouts, WCAG AA colour contrast
-- 57 unit tests and a 13-test browser suite (Playwright) that runs against the real
+- 60 unit tests and a 13-test browser suite (Playwright) that runs against the real
   stack, including automated accessibility checks
 
 ### Backend
@@ -348,6 +348,7 @@ docker-compose.yml  PostgreSQL and Redis; with --profile full the whole applicat
 | [Contributing](CONTRIBUTING.md) | Setup, layering rules, migrations, tests, commit messages |
 | [Deployment guide](docs/17-deployment-guide.md) | Local Docker versus production, components, configuration, secrets, database, releases, probes, checklist |
 | [Testing strategy](docs/16-testing-strategy.md) | Test layers, principles, where each failure scenario is tested, how to run everything |
+| [Final engineering report](docs/FINAL_ENGINEERING_REPORT.md) | What was built, verification results (clean clone, CI), performance, known limitations, deployment and publication |
 | [Phase 9 QA report](docs/PHASE_9_QA_REPORT.md) | Security, versioning, observability and performance work, with all verification results |
 | [Performance and scalability](docs/19-performance-and-scalability.md) | Measured latency, throughput and query plans (environment stated), scaling, hot spots |
 | [Observability](docs/18-observability.md) | Logs and IDs, heartbeats, system status, organization summary and processing durations, investigating a failure |
@@ -361,3 +362,8 @@ docker-compose.yml  PostgreSQL and Redis; with --profile full the whole applicat
 | [Phase 8 report](docs/PHASE_8_FRONTEND_REPORT.md) | What was delivered, verification, limitations |
 | [Architecture decisions](docs/adr/) | ADR-0001 to ADR-0021 |
 | [Project plan](PROJECT_PLAN.md), [Status](PROJECT_STATUS.md), [Changelog](CHANGELOG.md) | Progress tracking |
+
+## Licence
+
+[MIT](LICENSE). The common-password list in `backend/app/security/data/` comes from
+SecLists (MIT, Daniel Miessler); its notice is kept at the top of that file.
