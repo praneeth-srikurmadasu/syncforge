@@ -13,3 +13,6 @@ cryptography==50.0.2
 httpx2==2.16.0
 celery==5.7.0
 redis==8.1.0
+# kombu's Redis transport imports packaging without declaring it; found when the worker
+# was started from runtime requirements only (Phase 10 container check).
+packaging==26.3

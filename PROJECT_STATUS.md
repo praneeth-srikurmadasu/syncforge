@@ -1,6 +1,6 @@
 # SyncForge - Project Status
 
-**Current phase:** 9 complete - security, API versioning, observability, QA (report: `docs/PHASE_9_QA_REPORT.md`). Next: Phase 10, awaiting approval.
+**Current phase:** 10 in progress - Docker, CI/CD, deployment, final delivery (plan: `docs/PHASE_10_PLAN.md`). Milestone 1 delivered.
 **Last updated:** 2026-11-12
 
 | Phase | Status |
@@ -14,7 +14,30 @@
 | 7 - Data integrity, conflicts, audit logging | Complete |
 | 8 - Angular frontend | Complete |
 | 9 - Security, versioning, observability, QA | Complete |
-| 10 | Not started |
+| 10 - Docker, CI/CD, deployment, final delivery | In progress (milestone 1 of 5) |
+
+## Phase 10 progress
+
+| Milestone | Scope | Status |
+|---|---|---|
+| 1 | Docker: backend image (API, worker, relay, migration job), web image (Angular build served by nginx, which forwards API paths), mock-services image, `.dockerignore` files, Compose profile `full` with health checks and start-up order (`docker compose up -d` unchanged); `packaging` added to runtime requirements (missing dependency found by the container check) | Done |
+| 2 | GitHub Actions CI | Next |
+| 3-5 | Deployment guide, remaining documents, final delivery | Planned |
+
+### Phase 10 verification (actual results)
+- Milestone 1, Linux workspace. Docker Hub is blocked here by network policy, so images
+  could not be pulled or built in this workspace. Verified instead: `docker compose config`
+  valid with and without `--profile full`, and the rendered environment checked per
+  service (container hosts override `.env`, only the API trusts forwarded addresses, the
+  API has no published port). Each image's steps were run in clean environments: backend
+  runtime requirements only -> `alembic upgrade head` on an empty database (0001-0016);
+  API with `--proxy-headers`, worker (`--concurrency=2`), relay and the three mocks from
+  those environments; an onboarding hire completed with three successful steps, and a
+  login sent with `X-Forwarded-For: 203.0.113.77` was recorded with that address. This
+  check found that the worker failed without `packaging` (imported by kombu's Redis
+  transport, undeclared); pinned in `backend/requirements.txt`. Frontend `npm ci` and
+  `ng build --configuration production` from a clean copy succeeded (351.52 kB initial).
+  The container run itself is verified on the owner's Windows machine.
 
 ## Phase 9 progress
 

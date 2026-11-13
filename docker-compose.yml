@@ -1,10 +1,33 @@
-# SyncForge local development stack.
+# SyncForge local stack.
 # Values come from .env in this folder (copy .env.example to .env first).
-# PostgreSQL (system of record) and Redis (message broker for the background workers).
-# The API, worker, relay and mock services run from the virtual environment for now;
-# they are containerized in Phase 10.
+#
+#   docker compose up -d                        PostgreSQL and Redis only, for running the
+#                                               API, worker, relay and mocks from the
+#                                               virtual environment (README "Quick start")
+#   docker compose --profile full up -d --build everything in containers; open
+#                                               http://localhost:8080
+#
+# This is a local development and demonstration setup, not a production deployment
+# (docs/17-deployment-guide.md).
 
 name: syncforge
+
+x-backend: &backend
+  build:
+    context: ./backend
+  image: syncforge-backend:local
+  env_file: .env
+  environment: &backend-env
+    # Container addresses replace the localhost values in .env.
+    POSTGRES_HOST: postgres
+    POSTGRES_PORT: "5432"
+    REDIS_URL: redis://redis:6379/0
+    SLACK_BASE_URL: http://mock-slack:9101
+    GOOGLE_WORKSPACE_BASE_URL: http://mock-google:9102
+    PAYROLL_BASE_URL: http://mock-payroll:9103
+    CONNECTOR_ALLOWED_HOSTS: '["mock-slack", "mock-google", "mock-payroll"]'
+    CORS_ORIGINS: '["http://localhost:8080"]'
+  restart: unless-stopped
 
 services:
   postgres:
@@ -39,6 +62,104 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
+
+  # ---- profile "full": the application in containers ---------------------------------
+
+  migrate:
+    <<: *backend
+    profiles: ["full"]
+    container_name: syncforge-migrate
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *backend
+    profiles: ["full"]
+    container_name: syncforge-api
+    environment:
+      <<: *backend-env
+      # Only the web container can reach the API (no published port), so the client
+      # address it forwards can be trusted (sign-in limits, security events).
+      FORWARDED_ALLOW_IPS: "*"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  worker:
+    <<: *backend
+    profiles: ["full"]
+    container_name: syncforge-worker
+    command: ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  relay:
+    <<: *backend
+    profiles: ["full"]
+    container_name: syncforge-relay
+    command: ["python", "-m", "app.cli", "outbox-relay"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  mock-slack: &mock
+    profiles: ["full"]
+    build:
+      context: ./mock-services
+    image: syncforge-mocks:local
+    container_name: syncforge-mock-slack
+    command: ["uvicorn", "mockservices.slack:app", "--host", "0.0.0.0", "--port", "9101"]
+    # Published so you can inject faults from the host (mock-services/README.md).
+    ports:
+      - "9101:9101"
+    restart: unless-stopped
+
+  mock-google:
+    <<: *mock
+    container_name: syncforge-mock-google
+    command: ["uvicorn", "mockservices.google_workspace:app", "--host", "0.0.0.0", "--port", "9102"]
+    ports:
+      - "9102:9102"
+
+  mock-payroll:
+    <<: *mock
+    container_name: syncforge-mock-payroll
+    command: ["uvicorn", "mockservices.payroll:app", "--host", "0.0.0.0", "--port", "9103"]
+    ports:
+      - "9103:9103"
+
+  web:
+    profiles: ["full"]
+    build:
+      context: ./frontend
+    image: syncforge-web:local
+    container_name: syncforge-web
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

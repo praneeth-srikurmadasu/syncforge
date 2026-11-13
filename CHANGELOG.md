@@ -4,6 +4,22 @@ All notable changes to SyncForge are recorded here.
 
 ## [Unreleased]
 
+### Phase 10 - Docker, CI/CD, deployment and final delivery (in progress)
+
+#### Added
+- `docs/PHASE_10_PLAN.md`.
+- Docker images: `backend/Dockerfile` (one image for the API, worker, relay and migration
+  job, non-root), `frontend/Dockerfile` + `frontend/nginx.conf` (Angular build served by
+  nginx, which forwards `/api`, `/health`, `/ready`, `/docs`, `/openapi.json` to the API),
+  `mock-services/Dockerfile`; `.dockerignore` files.
+- Docker Compose profile `full`: migrations as a one-off job, then API, worker, relay,
+  mocks and web, with health checks and start-up order; the web app on port 8080.
+
+#### Fixed
+- `packaging` added to the backend runtime requirements: kombu's Redis transport imports
+  it without declaring it, so a worker installed from `requirements.txt` alone failed to
+  start (development environments had it through pytest).
+
 ### Phase 9 - Security, API versioning, observability and QA (complete)
 
 #### Added

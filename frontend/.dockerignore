@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.angular/
+e2e/results/
+e2e/report/

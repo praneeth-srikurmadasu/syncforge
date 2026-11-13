@@ -110,6 +110,7 @@ Real screens of the running application against the local stack (the connectors 
 |---|---|---|
 | Backend | Python 3.13, FastAPI, Pydantic v2, SQLAlchemy 2, Alembic | in use |
 | Database | PostgreSQL 16 (Docker) | in use |
+| Containers | Docker images for backend, web (nginx) and mocks; Docker Compose | in use (Phase 10) |
 | Auth | Argon2id password hashing, JWT (PyJWT) | in use |
 | Integrations | httpx2 (HTTP client), cryptography (Fernet credential encryption) | in use |
 | Testing | Pytest, Starlette TestClient | in use |
@@ -117,6 +118,32 @@ Real screens of the running application against the local stack (the connectors 
 | Frontend | Angular 22, TypeScript, Angular CDK, ECharts 6 | in use |
 | Frontend testing | Vitest, Playwright, axe-core | in use |
 | CI | GitHub Actions | Phase 10 |
+
+## Run everything in Docker (one command)
+
+Prerequisites: Docker Desktop and Git. From the repository root, after creating `.env`
+from `.env.example` (Quick start step 2 below):
+
+```powershell
+docker compose --profile full up -d --build
+docker compose --profile full ps
+```
+
+Open **http://localhost:8080**, create an account and an organization. The API
+documentation is at http://localhost:8080/docs. Compose starts PostgreSQL, Redis, a
+one-off migration job, the API, a worker, the outbox relay, the three simulated
+applications and the web server, in that order, and waits for each to be healthy. Data
+is kept in the `postgres-data` volume between runs.
+
+```powershell
+docker compose --profile full logs -f worker   # follow one service
+docker compose --profile full down             # stop (data kept)
+docker compose --profile full down -v          # stop and delete the database volume
+```
+
+The containerized API uses the same database as the virtual-environment setup below, so
+stop one before starting the other (both use port 5432 and the mock ports 9101-9103).
+This is a local setup, not a production deployment.
 
 ## Quick start (Windows PowerShell)
 
@@ -271,13 +298,15 @@ backend/
     workers/        Celery app and tasks
     cli.py          operator commands (create-superadmin, seed-demo, outbox-relay, purge-expired)
     seed.py         demo data
-  migrations/       Alembic migrations (0001-0012)
+  migrations/       Alembic migrations (0001-0016)
+  Dockerfile        one image for the API, worker, relay and migration job
   tests/            pytest suite
 docs/               architecture, database, API, security, ADRs
-frontend/           Angular application (src/app: core, layout, shared, features; e2e/ browser tests)
-mock-services/      mock Slack / Google Workspace / payroll APIs (simulated, failure injection)
-infrastructure/     scripts (scripts/demo_reliability.py); Dockerfiles in Phase 10
-docker-compose.yml  local PostgreSQL and Redis (more services added per phase)
+frontend/           Angular application (src/app: core, layout, shared, features; e2e/ browser tests;
+                    Dockerfile and nginx.conf for the web container)
+mock-services/      mock Slack / Google Workspace / payroll APIs (simulated, failure injection; Dockerfile)
+infrastructure/     scripts (demo_reliability.py, benchmark.py)
+docker-compose.yml  PostgreSQL and Redis; with --profile full the whole application
 ```
 
 ## Documentation
