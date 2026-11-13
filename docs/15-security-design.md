@@ -324,3 +324,35 @@ lock is removed.
 | Secrets manager / envelope encryption for the connector key; bulk re-encryption command | Future improvement |
 | OAuth authorization-code ("Connect with Google") flow | Future improvement |
 | Authentication between workers and Redis (Redis password / TLS). Locally Redis has no password and Docker publishes its port on the host (as for PostgreSQL), which is acceptable on a development machine only | Phase 10 deployment guide |
+
+## 11. Phase 9 security review (2026-11-13)
+
+Each control the project requirements list, checked against the code and the tests.
+"Evidence" points to the tests or measurements that show it works.
+
+| Control | Status | Implementation | Evidence |
+|---|---|---|---|
+| Password hashing | Done | Argon2id, rehash on login when parameters change (section 3) | `test_security.py` |
+| Password quality | Done (Phase 9) | Minimum 8, common-password list, context words, no composition rules | `test_security_hardening.py` (weak passwords), browser test refuses `password1` |
+| JWT validation | Done | Signature, expiry, issuer, audience, `jti` revocation on logout | `test_security.py`, `test_auth_api.py` |
+| Brute-force protection | Done (Phase 9) | Per-IP and per-account fixed windows in PostgreSQL, 429 with `Retry-After` (section 4a) | `test_security_hardening.py`; live: lock-out message in the browser |
+| Sign-in auditing | Done (Phase 9) | Append-only `security_events` (section 4b) | `test_security_events.py` |
+| Role-based authorization | Done | Permission matrix, checked in route dependencies (section 9) | `test_authorization.py`, per-module API tests, viewer browser test |
+| Organization isolation | Done | Every query scoped by `organization_id`; non-members get 404; composite same-organization foreign keys | `test_cross_organization_access_is_404_everywhere` and siblings; v2 cursor scope test; browser isolation test |
+| Platform endpoints | Done (Phase 9) | `security-events`, `system/status` for Super Admins only (`403 superadmin_required`) | `test_security_events.py`, `test_monitoring.py` |
+| OAuth / connector credential storage | Done | Fernet encryption, write-only, fingerprint only in responses, never logged | `test_encryption.py`, `test_connectors_api.py` (`test_logs_never_contain_credentials`) |
+| Secrets handling | Done | Settings from environment, `.env` ignored by git, placeholders in `.env.example`; production refuses placeholder secrets and a missing encryption key | `test_production_requires_an_encryption_key`; `git check-ignore .env`; secret-pattern scan of tracked files found only test values (QA report) |
+| CORS | Done | Allow-list, no credentials, needed headers only (section 6) | `test_cors_*` in `test_security_hardening.py` (added in this review: CORS had no automated test before) |
+| Security headers | Done (Phase 9) | nosniff, DENY framing, no referrer; `no-store` and strict CSP on `/api` | `test_security_headers_on_api_and_other_responses` |
+| Input validation | Done | Pydantic models with limits on every body and query parameter; 422 with field details | API tests per module |
+| Request size limit | Done (Phase 9) | 1 MiB, before the handler, also for chunked bodies | `test_declared_oversized_body_is_refused_before_the_handler`, `test_streamed_oversized_body_is_refused` |
+| SQL injection | Done | SQLAlchemy expressions and bound parameters only; the search pattern escapes `%` and `_` (`escape_like`) | `test_search` (`100%` matched literally, `_` not a wildcard) |
+| SSRF towards connectors | Done (with a limit) | Base-URL allowlist by host name (docs/10) | `test_connector_core.py`; limitation: host names, not resolved IPs |
+| Sensitive data in logs | Done | IDs only; no names, emails, passwords, tokens or credentials | `test_logs_never_contain_credentials`, lifecycle log tests |
+| Sensitive data in audit records | Done | Field names, never values; no secrets | `test_personal_values_never_reach_the_audit_log` |
+| Error responses | Done | One envelope, no stack traces, request ID for support | `test_health.py`, error-handler tests |
+| Dependency vulnerabilities | Checked (Phase 9) | `pip-audit` on backend runtime and dev requirements and mock services: none; `npm audit --omit=dev`: 0 | QA report; 15 moderate npm advisories are in the ESLint toolchain only (`minimatch`), development time |
+
+Open items that remain (section 10): MFA, secrets manager for the connector key, OAuth
+authorization-code flow, retention jobs, Redis authentication outside development
+(Phase 10 deployment guide), HttpOnly-cookie sessions for the browser.

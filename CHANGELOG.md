@@ -4,7 +4,7 @@ All notable changes to SyncForge are recorded here.
 
 ## [Unreleased]
 
-### Phase 9 - Security, API versioning, observability and QA (in progress)
+### Phase 9 - Security, API versioning, observability and QA (complete)
 
 #### Added
 - `docs/PHASE_9_PLAN.md`: audit of the starting point, design decisions, milestones and
@@ -41,6 +41,9 @@ All notable changes to SyncForge are recorded here.
 - Employee index `(organization_id, last_name)` replaced by
   `(organization_id, last_name, first_name, id)` (migration 0016): directory pages and v2
   cursor pages are read in index order without a sort (measured).
+- Quality pass: `docs/16-testing-strategy.md`, security review table (docs/15 section 11),
+  CORS tests (previously untested), troubleshooting entries for the new limits,
+  `docs/PHASE_9_QA_REPORT.md`.
 
 #### Changed
 - CORS preflight allows `If-Match` and `Idempotency-Key` and exposes `ETag` and

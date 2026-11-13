@@ -76,6 +76,17 @@ whether any are past their lease ([docs/18](18-observability.md#3-health-of-back
 | Reconcile reports `errors` with `not_found` | The account was deleted in the application | Re-provision (create the account again) or unlink; investigate who deleted it there |
 | Reconcile stops early with `circuit_open` | The application is failing; its circuit breaker is open | Wait for the open period or run a connection test once it is back, then reconcile again |
 
+## Signing in and registering (Phase 9 limits)
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| "Too many failed sign-in attempts for this account. Try again in N minutes." (`429 rate_limited`) | 10 failed sign-ins for that email within the 15-minute window | Wait until the time shown (the window is aligned to the clock); in development lower or raise `AUTH_LOGIN_FAILURES_LIMIT` in `.env` and restart the API. The refusal is in `security_events` |
+| "Too many sign-in attempts from this network" | More than `AUTH_LOGIN_IP_LIMIT` (60) sign-ins per minute from one IP, e.g. a script in a loop | Slow the script down, or raise the limit for development |
+| `429` on registration while running the browser tests repeatedly | More than 50 accounts per hour from one IP (`AUTH_REGISTER_IP_LIMIT`); each browser-test run registers more than ten | Wait, or raise the limit in `.env` for development |
+| Registration says "This password is too common" | The password is on the bundled list of common passwords, repeats one character, contains "syncforge" or the email name | Choose a longer passphrase |
+| Everyone shares one limit behind a reverse proxy | The API sees the proxy's address as the client | Run Uvicorn with `--proxy-headers --forwarded-allow-ips=<proxy address>` (docs/15 section 4a) |
+| `413 payload_too_large` | Request body over `MAX_REQUEST_BODY_BYTES` (1 MiB) | Send smaller requests; no SyncForge request needs more |
+
 ## API calls from PowerShell
 
 | Symptom | Cause | Fix |

@@ -1,6 +1,6 @@
 # SyncForge - Project Status
 
-**Current phase:** 9 in progress - security, API versioning, observability, QA (plan: `docs/PHASE_9_PLAN.md`). Milestones 1-6 delivered.
+**Current phase:** 9 complete - security, API versioning, observability, QA (report: `docs/PHASE_9_QA_REPORT.md`). Next: Phase 10, awaiting approval.
 **Last updated:** 2026-11-12
 
 | Phase | Status |
@@ -13,7 +13,7 @@
 | 6 - Reliability engine and failure recovery | Complete |
 | 7 - Data integrity, conflicts, audit logging | Complete |
 | 8 - Angular frontend | Complete |
-| 9 - Security, versioning, observability, QA | In progress (milestones 1-6 of 7) |
+| 9 - Security, versioning, observability, QA | Complete |
 | 10 | Not started |
 
 ## Phase 9 progress
@@ -26,9 +26,14 @@
 | 4 | Observability: worker and relay heartbeats (migration 0015), `GET /system/status` (Super Admins), `GET .../summary` with processing durations (p50 / p95 / max, 24 h), `event delivery finished` log line with duration; dashboard uses the summary (48 -> 33 requests per load, measured); `docs/18-observability.md` | Done |
 | 5 | `/api/v2/organizations/{id}/employees` with keyset (cursor) pagination, opaque validated cursors, v1 unchanged; versioning policy and v1 -> v2 migration guide (docs/08 section 14); ADR-0021 | Done |
 | 6 | Performance: `infrastructure/scripts/benchmark.py` (API latency percentiles, event throughput, EXPLAIN ANALYZE), results in `docs/performance/`, `docs/19-performance-and-scalability.md`; employee name index widened to the full sort key (migration 0016) after the measurements showed sorts and a sequential scan | Done |
-| 7 | QA | Next |
+| 7 | Quality pass: backend suite 5x in order and 3x in random order, browser suite 2x, dependency audits (pip-audit, npm audit), secret scan, security review table (docs/15 section 11) with three new CORS tests, `docs/16-testing-strategy.md`, troubleshooting entries, `docs/PHASE_9_QA_REPORT.md` | Done |
 
 ### Phase 9 verification (actual results)
+- Milestone 7, Linux workspace: backend 576 passed in 5 consecutive runs and in 3
+  random orders, **579 passed** after the CORS tests; ruff clean (backend, mock services);
+  frontend **60 passed**, lint, format, API check clean, build success; `npm run e2e`
+  **13 passed** twice; pip-audit: no known vulnerabilities; `npm audit --omit=dev`: 0;
+  secret scan: test values only. Details: `docs/PHASE_9_QA_REPORT.md`.
 - Milestone 6, Linux workspace (2 CPUs, everything on one machine; docs/19): four
   benchmark runs. 1,000 employees: endpoints 9-17 ms p50. 10,000 employees: OFFSET last
   page 27.6 ms vs cursor 9.9 ms, search 38.5 ms, summary 40.2 ms. One worker about 10
@@ -471,7 +476,7 @@ Plan, screen-to-endpoint map and unsupported features: `docs/PHASE_8_FRONTEND_PL
 - `python -m app.cli purge-expired` must be scheduled by the operator (cron / Task
   Scheduler); SyncForge has no built-in scheduler.
 - Several workers do not guarantee per-employee ordering (steps read current state, so this
-  is safe today); worker and relay health endpoints are Phase 9.
+  is safe today). Worker and relay health is reported by `GET /system/status` (Phase 9).
 - Event, outbox, execution, attempt and dead-letter tables are never pruned (retention job:
   future improvement).
 - All three connectors are simulated (verified against local mocks only); real Slack and
@@ -491,6 +496,9 @@ Plan, screen-to-endpoint map and unsupported features: `docs/PHASE_8_FRONTEND_PL
   characters when a password is the only factor.
 - No refresh tokens: users log in again after 30 minutes.
 - One unidentified intermittent test failure seen once at the end of Phase 5 (Linux
-  workspace, 1 of 15 full runs, test name not captured). It has not reappeared in any
-  Phase 6 or Phase 7 run (Windows and Linux). To be pinned down in the Phase 9 quality pass if it
-  returns.
+  workspace, 1 of 15 full runs, test name not captured). It has not reappeared since: in
+  the Phase 9 quality pass the suite passed 5 times in order and 3 times in random order
+  (docs/16 section 5).
+- Substring search and the organization summary read the whole organization (38-40 ms at
+  10,000 employees on the 2-CPU test machine; options in docs/19 section 5).
+- Browser sign-in uses a bearer token in sessionStorage (not an HttpOnly cookie).

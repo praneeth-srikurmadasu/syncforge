@@ -6,7 +6,7 @@ SyncForge keeps employee data consistent across HR, Slack, Google Workspace and 
 turning workforce changes (hire, transfer, termination) into reliably processed, audited
 synchronization events.
 
-> **Status: Phase 8 of 10 complete - the Angular administration application on top of the backend from Phases 2-7. Next: Phase 9, security hardening, API versioning and observability.**
+> **Status: Phase 9 of 10 complete - security hardening, API versioning, observability and performance measurements on top of the backend (Phases 2-7) and the Angular application (Phase 8). Next: Phase 10, Docker, CI and final delivery.**
 > See [`PROJECT_STATUS.md`](PROJECT_STATUS.md) for exactly what works today.
 
 ## Screenshots
@@ -100,7 +100,7 @@ Real screens of the running application against the local stack (the connectors 
   severity, manual or automatic fixing); reconciliation compares each application with
   SyncForge and records differences instead of overwriting them; conflicts are resolved
   explicitly, with override, staleness and permission checks, and a full history
-- 527 automated tests against a real PostgreSQL database, including two-session
+- 579 automated backend tests against a real PostgreSQL database, including two-session
   concurrency tests, connector tests over real HTTP against the mocks, a real Celery
   worker, and failure simulations (outages, 429, timeouts, crashes, duplicates)
 
@@ -294,6 +294,8 @@ docker-compose.yml  local PostgreSQL and Redis (more services added per phase)
 | [Reliability and retries](docs/12-reliability-and-retries.md) | Failure classification, backoff and jitter, attempt history, dead-letter queue and replay, circuit breaker, rate limits, timeouts, demo |
 | [Idempotency](docs/13-idempotency.md) | Where duplicates could come from and what stops each; idempotency keys outgoing and incoming |
 | [Data integrity](docs/14-data-integrity.md) | Audit log, optimistic concurrency (ETag / If-Match), source-of-truth policies, reconciliation, conflict resolution |
+| [Testing strategy](docs/16-testing-strategy.md) | Test layers, principles, where each failure scenario is tested, how to run everything |
+| [Phase 9 QA report](docs/PHASE_9_QA_REPORT.md) | Security, versioning, observability and performance work, with all verification results |
 | [Performance and scalability](docs/19-performance-and-scalability.md) | Measured latency, throughput and query plans (environment stated), scaling, hot spots |
 | [Observability](docs/18-observability.md) | Logs and IDs, heartbeats, system status, organization summary and processing durations, investigating a failure |
 | [Security design](docs/15-security-design.md) | Auth flow, JWT lifecycle, passwords, secrets, roles, tenant isolation, connector credentials, SSRF |

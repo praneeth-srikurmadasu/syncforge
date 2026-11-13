@@ -234,3 +234,47 @@ def test_security_headers_on_api_and_other_responses(client: TestClient) -> None
     assert "Content-Security-Policy" not in health.headers
     docs = client.get("/docs")
     assert "Content-Security-Policy" not in docs.headers
+
+
+# ---- CORS -------------------------------------------------------------------------------
+
+
+def test_cors_preflight_allows_the_configured_origin_and_needed_headers(
+    client: TestClient,
+) -> None:
+    origin = get_settings().cors_origins[0]
+    response = client.options(
+        "/api/v1/auth/login",
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "PATCH",
+            "Access-Control-Request-Headers": "authorization, if-match, idempotency-key",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["Access-Control-Allow-Origin"] == origin
+    allowed = response.headers["Access-Control-Allow-Headers"].lower()
+    for header in ("authorization", "if-match", "idempotency-key"):
+        assert header in allowed
+    # No cookies are used, so credentials are never allowed cross-origin.
+    assert "Access-Control-Allow-Credentials" not in response.headers
+
+
+def test_cors_ignores_other_origins(client: TestClient) -> None:
+    preflight = client.options(
+        "/api/v1/auth/login",
+        headers={"Origin": "https://evil.example", "Access-Control-Request-Method": "POST"},
+    )
+    assert preflight.status_code == 400
+    assert "Access-Control-Allow-Origin" not in preflight.headers
+
+    simple = client.get("/health", headers={"Origin": "https://evil.example"})
+    assert "Access-Control-Allow-Origin" not in simple.headers
+
+
+def test_cors_exposes_the_headers_clients_read(client: TestClient) -> None:
+    origin = get_settings().cors_origins[0]
+    response = client.get("/health", headers={"Origin": origin})
+    exposed = response.headers["Access-Control-Expose-Headers"].lower()
+    for header in ("x-request-id", "etag", "retry-after"):
+        assert header in exposed
